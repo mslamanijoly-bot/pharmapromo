@@ -75,13 +75,14 @@ const TYPES: { id: PromoType; label: string; icon: string; color: string }[] = [
 ];
 
 const FONTS = [
+  { name: 'Poppins',   css: 'var(--font-poppins),system-ui,sans-serif' },
+  { name: 'Montserrat', css: 'var(--font-montserrat),system-ui,sans-serif' },
   { name: 'Système',   css: 'system-ui,-apple-system,Segoe UI,sans-serif' },
   { name: 'Arial',     css: 'Arial,Helvetica,sans-serif' },
   { name: 'Impact',    css: 'Impact,Haettenschweiler,Arial Narrow,sans-serif' },
   { name: 'Georgia',   css: 'Georgia,Cambria,serif' },
   { name: 'Trebuchet', css: '"Trebuchet MS",Tahoma,sans-serif' },
   { name: 'Verdana',   css: 'Verdana,Geneva,sans-serif' },
-  { name: 'Courier',   css: '"Courier New",monospace' },
 ];
 
 const BADGES = [
@@ -207,14 +208,14 @@ function seedEls(l: Label, o: SeedOpts): El[] {
         { ...B, id: 'product', kind: 'text', text: d.product, x: 3, y: 51, w: 55, size: 0.078, color: '#21392B', weight: 800, align: 'left' },
         ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 3, y: 71, w: 55, size: 0.058, color: DA.green, weight: 600, align: 'left' as Align }] : []),
         { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 60, y: 2, w: 42, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-        ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: `${d.normalPrice}€`, x: 70, y: 9, w: 22, size: 0.085, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
-        { ...B, id: 'priceInt', kind: 'text', text: intp, x: 63, y: 18, size: 0.42, color: DA.priceY, weight: 900, align: 'left' },
-        { ...B, id: 'euro', kind: 'text', text: '€', x: 82, y: 20, size: 0.13, color: DA.priceY, weight: 900, align: 'left' },
-        { ...B, id: 'cents', kind: 'text', text: cents, x: 82, y: 36, size: 0.15, color: DA.priceY, weight: 900, align: 'left' },
+        ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: `${d.normalPrice}€`, x: 61, y: 9, w: 38, size: 0.09, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
+        { ...B, id: 'priceInt', kind: 'text', text: intp, x: 66, y: 18, size: 0.42, color: DA.priceY, weight: 900, align: 'left' },
+        { ...B, id: 'euro', kind: 'text', text: '€', x: 85, y: 20.5, size: 0.135, color: DA.priceY, weight: 900, align: 'left' },
+        { ...B, id: 'cents', kind: 'text', text: cents, x: 85, y: 37, size: 0.15, color: DA.priceY, weight: 900, align: 'left' },
         ...(remise ? [
-          { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 66, y: 60, w: 26, h: 1.4, bg: '#fff', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
-          { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: `-${remise}€`, x: 63, y: 63, size: 0.12, color: '#fff', weight: 900, align: 'left' as Align },
-          { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 76, y: 64, w: 22, size: 0.05, color: '#fff', weight: 800, align: 'left' as Align },
+          { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 64, y: 61, w: 30, h: 1.2, bg: '#ffffffcc', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
+          { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: `-${remise}€`, x: 64, y: 63.5, size: 0.12, color: '#fff', weight: 900, align: 'left' as Align },
+          { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 77, y: 64.5, w: 21, size: 0.048, color: '#fff', weight: 800, align: 'left' as Align },
         ] : []),
         ...footEls(l, o),
       ];
@@ -224,14 +225,14 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 7, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
       { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 1.7, w: 100, size: 0.027, color: '#fff', weight: 800, align: 'center' },
       { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 19, y: 9, w: 62, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: `${d.normalPrice}€`, x: 38, y: 14, w: 24, size: 0.026, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
-      { ...B, id: 'priceInt', kind: 'text', text: intp, x: 23, y: 17, size: 0.165, color: DA.priceY, weight: 900, align: 'left' },
-      { ...B, id: 'euro', kind: 'text', text: '€', x: 56, y: 18, size: 0.05, color: DA.priceY, weight: 900, align: 'left' },
-      { ...B, id: 'cents', kind: 'text', text: cents, x: 56, y: 26, size: 0.06, color: DA.priceY, weight: 900, align: 'left' },
+      ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: `${d.normalPrice}€`, x: 31, y: 14, w: 38, size: 0.027, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
+      { ...B, id: 'priceInt', kind: 'text', text: intp, x: 27, y: 17, size: 0.175, color: DA.priceY, weight: 900, align: 'left' },
+      { ...B, id: 'euro', kind: 'text', text: '€', x: 60, y: 18.5, size: 0.052, color: DA.priceY, weight: 900, align: 'left' },
+      { ...B, id: 'cents', kind: 'text', text: cents, x: 60, y: 27, size: 0.062, color: DA.priceY, weight: 900, align: 'left' },
       ...(remise ? [
-        { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 31, y: 40, w: 38, h: 0.5, bg: '#fff', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
-        { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: `-${remise}€`, x: 31, y: 42, size: 0.05, color: '#fff', weight: 900, align: 'left' as Align },
-        { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 45, y: 42.5, w: 26, size: 0.021, color: '#fff', weight: 800, align: 'left' as Align },
+        { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 31, y: 41, w: 38, h: 0.5, bg: '#ffffffcc', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
+        { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: `-${remise}€`, x: 31, y: 43, size: 0.05, color: '#fff', weight: 900, align: 'left' as Align },
+        { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 45, y: 43.5, w: 26, size: 0.021, color: '#fff', weight: 800, align: 'left' as Align },
       ] : []),
       { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 56, w: 88, size: 0.05, color: '#21392B', weight: 800, align: 'center' },
       ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 70, w: 88, size: 0.037, color: DA.green, weight: 600, align: 'center' as Align }] : []),
