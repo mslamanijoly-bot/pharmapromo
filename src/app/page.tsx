@@ -110,7 +110,7 @@ const LABEL_PRESETS = [
 ];
 
 const MM = 96 / 25.4;
-const MARGIN_MM = 5, HEADER_MM = 0, GAP_MM = 3;
+const MARGIN_MM = 0, HEADER_MM = 0, GAP_MM = 3;
 
 const SYS = FONTS[0].css;
 const DISCLAIMER = '*Non cumulable avec d’autres promotions en cours et dans la limite des stocks disponibles.';
@@ -398,9 +398,9 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
   const L = layout(project);
   const opts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: editing && !forPrint };
   return (
-    <div style={{ width: L.PW, height: L.PH, background: '#fff', transform: forPrint ? undefined : `scale(${scale})`, transformOrigin: 'top center', boxShadow: forPrint ? 'none' : '0 10px 40px rgba(0,0,0,0.18)', position: 'relative', flexShrink: 0 }}
+    <div style={{ width: L.PW, height: L.PH, background: '#fff', transform: forPrint ? undefined : `scale(${scale})`, transformOrigin: 'top left', boxShadow: forPrint ? 'none' : '0 10px 40px rgba(0,0,0,0.18)', position: 'relative', flexShrink: 0 }}
       onClick={() => { if (editing) { setSelLabel(null); setSelEl(null); } }}>
-      <div style={{ position: 'absolute', top: L.m, left: L.m, width: L.usableW, display: 'flex', flexWrap: 'wrap', gap: L.gap, alignContent: 'flex-start' }}>
+      <div style={{ position: 'absolute', top: L.m, left: L.m, width: L.usableW, display: 'flex', flexWrap: 'wrap', gap: L.gap, alignContent: 'flex-start', justifyContent: 'center' }}>
         {project.labels.map(label => (
           <LabelView key={label.id} label={label} W={L.lw} H={L.lh} editing={editing && !forPrint} opts={opts}
             selectedLabel={selLabel === label.id} selectedEl={selLabel === label.id ? selEl : null}
@@ -544,19 +544,40 @@ const localStore: Store = {
 //  STUDIO
 // ──────────────────────────────────────────────────────────────────────
 
+function useMobile() {
+  const [m, setM] = useState(false);
+  useEffect(() => { const f = () => setM(window.innerWidth < 820); f(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+  return m;
+}
+
 function Studio({ project, setProject, onBack, saving, mode }: { project: Project; setProject: (fn: (p: Project) => Project) => void; onBack: () => void; saving: string; mode: 'server' | 'local'; }) {
   const [selLabel, setSelLabel] = useState<string | null>(null);
   const [selEl, setSelEl] = useState<string | null>(null);
   const [editing, setEditing] = useState(true);
   const [scale, setScale] = useState(0.6);
   const [showImport, setShowImport] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const drag = useRef<DragState | null>(null);
+  const isMobile = useMobile();
   const L = layout(project);
 
   useEffect(() => {
-    const fit = () => { const availH = window.innerHeight - 130, availW = window.innerWidth - 340 - 80; setScale(Math.min(0.95, Math.max(0.2, Math.min(availH / L.PH, availW / L.PW)))); };
+    const fit = () => {
+      if (window.innerWidth < 820) { const availW = window.innerWidth - 20, availH = window.innerHeight - 150; setScale(Math.min(1.3, Math.max(0.12, Math.min(availH / L.PH, availW / L.PW)))); }
+      else { const availH = window.innerHeight - 130, availW = window.innerWidth - 340 - 80; setScale(Math.min(0.95, Math.max(0.2, Math.min(availH / L.PH, availW / L.PW)))); }
+    };
     fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit);
   }, [L.PH, L.PW]);
+
+  // ouvre le panneau d'édition sur mobile lors d'une sélection
+  const pickLabel = (id: string | null) => { setSelLabel(id); setSelEl(null); if (id && isMobile) setPanelOpen(true); };
+  const pickEl = (id: string | null) => { setSelEl(id); if (id && isMobile) setPanelOpen(true); };
+
+  // changement de dimensions : si l'orientation bascule, on remet les positions par défaut
+  const setSize = (w: number, h: number) => setProject(p => {
+    const flip = (p.labelWmm > p.labelHmm * 1.5) !== (w > h * 1.5);
+    return { ...p, labelWmm: w, labelHmm: h, labels: flip ? p.labels.map(l => ({ ...l, overrides: {} })) : p.labels };
+  });
 
   const current = project.labels.find(l => l.id === selLabel) || null;
   const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true };
@@ -605,7 +626,7 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
             <div style={{ fontSize: 11, color: saving === 'Enregistré' ? '#4ade80' : '#fbbf24' }}>{saving}</div>
             <div style={{ width: 1, height: 24, background: '#1e293b' }} />
             <div style={{ display: 'flex', gap: 4 }}>{PAGE_FORMATS.map(f => { const on = project.pageFormat === f.id; return <button key={f.id} onClick={() => setProject(p => ({ ...p, pageFormat: f.id }))} style={{ padding: '5px 9px', background: on ? '#16a34a' : '#1e293b', color: on ? '#fff' : '#94a3b8', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{f.name}</button>; })}</div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button onClick={() => setEditing(e => !e)} style={{ padding: '7px 12px', background: editing ? '#16a34a22' : '#1e293b', color: editing ? '#4ade80' : '#94a3b8', border: `1px solid ${editing ? '#16a34a' : '#334155'}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{editing ? '✓ Édition' : 'Aperçu'}</button>
               <button onClick={() => setShowImport(true)} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>⬆ Importer</button>
               <button onClick={addLabel} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Étiquette</button>
@@ -613,12 +634,18 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
             </div>
           </div>
           {overflow && <div style={{ background: '#7c2d12', color: '#fed7aa', fontSize: 12, padding: '6px 16px' }}>⚠ {project.labels.length} étiquettes pour {L.capacity} emplacement(s) — réduisez la taille ou changez de format.</div>}
-          <div style={{ flex: 1, overflow: 'auto', padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
-            <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} setSelLabel={(id) => { setSelLabel(id); setSelEl(null); }} setSelEl={setSelEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} />
+          <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? 8 : 28, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+            <div style={{ width: L.PW * scale, height: L.PH * scale, flexShrink: 0 }}>
+              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} />
+            </div>
           </div>
         </main>
 
-        <aside style={{ width: 340, flexShrink: 0, background: '#0f172a', borderLeft: '1px solid #1e293b', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {isMobile && panelOpen && <div onClick={() => setPanelOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 55 }} />}
+        <aside style={isMobile
+          ? { position: 'fixed', left: 0, right: 0, bottom: 0, height: '66vh', zIndex: 60, background: '#0f172a', borderTop: '1px solid #1e293b', display: 'flex', flexDirection: 'column', overflow: 'hidden', transform: panelOpen ? 'translateY(0)' : 'translateY(100%)', transition: 'transform .25s', boxShadow: '0 -12px 40px rgba(0,0,0,0.5)', borderTopLeftRadius: 14, borderTopRightRadius: 14 }
+          : { width: 340, flexShrink: 0, background: '#0f172a', borderLeft: '1px solid #1e293b', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {isMobile && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 18px', borderBottom: '1px solid #1e293b' }}><div style={{ width: 40, height: 4, background: '#334155', borderRadius: 2, margin: '0 auto' }} /><button onClick={() => setPanelOpen(false)} style={{ position: 'absolute', right: 14, background: 'none', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer' }}>✕</button></div>}
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
             {!current ? (
               <>
@@ -635,14 +662,14 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}>
                   <SectionTitle>Dimensions des étiquettes</SectionTitle>
                   <Field label="Modèles courants (mm)">
-                    <select value={`${project.labelWmm}x${project.labelHmm}`} onChange={e => { const [w, h] = e.target.value.split('x').map(Number); setProject(p => ({ ...p, labelWmm: w, labelHmm: h })); }} style={{ ...inp, cursor: 'pointer' }}>
+                    <select value={`${project.labelWmm}x${project.labelHmm}`} onChange={e => { const [w, h] = e.target.value.split('x').map(Number); setSize(w, h); }} style={{ ...inp, cursor: 'pointer' }}>
                       <option value={`${project.labelWmm}x${project.labelHmm}`}>{project.labelWmm}×{project.labelHmm} (actuel)</option>
                       {LABEL_PRESETS.map(p => <option key={p.name} value={`${p.w}x${p.h}`}>{p.name}</option>)}
                     </select>
                   </Field>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <NumMm label="Largeur (mm)" value={project.labelWmm} onChange={v => setProject(p => ({ ...p, labelWmm: v }))} />
-                    <NumMm label="Hauteur (mm)" value={project.labelHmm} onChange={v => setProject(p => ({ ...p, labelHmm: v }))} />
+                    <NumMm label="Largeur (mm)" value={project.labelWmm} onChange={v => setSize(v, project.labelHmm)} />
+                    <NumMm label="Hauteur (mm)" value={project.labelHmm} onChange={v => setSize(project.labelWmm, v)} />
                   </div>
                   <div style={{ fontSize: 11, color: '#64748b' }}>{L.landscape ? 'Disposition réglette (paysage)' : 'Disposition portrait'} · {L.capacity} / page</div>
                 </div>
@@ -676,6 +703,12 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
         </aside>
       </div>
 
+      {isMobile && !panelOpen && (
+        <button onClick={() => setPanelOpen(true)} style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 50, padding: '12px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 999, cursor: 'pointer', fontSize: 14, fontWeight: 800, boxShadow: '0 6px 20px rgba(22,163,74,0.5)' }}>
+          {selLabel ? '✏️ Éditer l’étiquette' : '⚙️ Réglages'}
+        </button>
+      )}
+
       <div id="print-root" style={{ display: 'none' }}>
         <Planche project={project} scale={1} editing={false} selLabel={null} selEl={null} setSelLabel={() => {}} setSelEl={() => {}} onAdd={() => {}} dragStart={() => {}} delEl={() => {}} forPrint />
       </div>
@@ -694,17 +727,17 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
 function Library({ metas, mode, onOpen, onNew, onDelete, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onLogout: () => void; }) {
   return (
     <div style={{ minHeight: '100vh', background: '#0b1220', fontFamily: SYS, color: '#e2e8f0' }}>
-      <div style={{ background: '#0f172a', borderBottom: '1px solid #1e293b', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 32, height: 32, background: 'linear-gradient(135deg,#16a34a,#15803d)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 18 }}>✚</div>
+      <div style={{ background: '#0f172a', borderBottom: '1px solid #1e293b', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ width: 32, height: 32, background: 'linear-gradient(135deg,#16a34a,#15803d)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 18, flexShrink: 0 }}>✚</div>
         <div><div style={{ fontSize: 16, fontWeight: 800 }}>PharmaPROMO <span style={{ color: '#16a34a' }}>Studio</span></div><div style={{ fontSize: 10, color: '#475569', letterSpacing: '0.06em' }}>BIBLIOTHÈQUE D&apos;ÉQUIPE</div></div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ fontSize: 11, color: mode === 'server' ? '#4ade80' : '#f59e0b' }}>● {mode === 'server' ? 'Cloud partagé' : 'Local'}</span>{mode === 'server' && <button onClick={onLogout} style={{ padding: '6px 12px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Déconnexion</button>}</div>
       </div>
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}><h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Planches promotionnelles</h1><button onClick={onNew} style={{ marginLeft: 'auto', padding: '10px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 800, boxShadow: '0 2px 12px #16a34a55' }}>＋ Nouvelle planche</button></div>
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}><h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Planches promotionnelles</h1><button onClick={onNew} style={{ marginLeft: 'auto', padding: '10px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 800, boxShadow: '0 2px 12px #16a34a55' }}>＋ Nouvelle planche</button></div>
         {metas.length === 0 ? (
-          <div style={{ padding: 60, textAlign: 'center', color: '#475569', border: '2px dashed #1e293b', borderRadius: 12 }}>Aucune planche. Cliquez <strong style={{ color: '#94a3b8' }}>Nouvelle planche</strong> pour démarrer.</div>
+          <div style={{ padding: 40, textAlign: 'center', color: '#475569', border: '2px dashed #1e293b', borderRadius: 12 }}>Aucune planche. Cliquez <strong style={{ color: '#94a3b8' }}>Nouvelle planche</strong> pour démarrer.</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 14 }}>
             {metas.map(m => (
               <div key={m.id} onClick={() => onOpen(m.id)} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 18, cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.borderColor = '#16a34a')} onMouseLeave={e => (e.currentTarget.style.borderColor = '#1e293b')}>
                 <div style={{ height: 80, background: 'linear-gradient(135deg,#FFD400,#F5C800)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, marginBottom: 12 }}>🏷️</div>
@@ -724,7 +757,7 @@ function Login({ onSubmit, error }: { onSubmit: (key: string) => void; error: st
   const [k, setK] = useState('');
   return (
     <div style={{ minHeight: '100vh', background: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SYS }}>
-      <form onSubmit={e => { e.preventDefault(); onSubmit(k); }} style={{ width: 360, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 14, padding: 32, color: '#e2e8f0' }}>
+      <form onSubmit={e => { e.preventDefault(); onSubmit(k); }} style={{ width: 360, maxWidth: '90vw', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 14, padding: 28, color: '#e2e8f0' }}>
         <div style={{ width: 44, height: 44, background: 'linear-gradient(135deg,#16a34a,#15803d)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 24, marginBottom: 16 }}>✚</div>
         <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>PharmaPROMO Studio</div>
         <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 20 }}>Entrez le mot de passe d&apos;équipe pour accéder à la bibliothèque partagée.</div>

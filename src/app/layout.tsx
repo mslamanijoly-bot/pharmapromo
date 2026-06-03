@@ -20,6 +20,8 @@ export const metadata: Metadata = {
   description: "Créez des étiquettes promotionnelles professionnelles pour pharmacie",
 };
 
+export const viewport = { width: "device-width", initialScale: 1, maximumScale: 1 };
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" className={`${poppins.variable} ${montserrat.variable}`}>
