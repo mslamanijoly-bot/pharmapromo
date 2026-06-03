@@ -43,7 +43,7 @@ interface Project {
 }
 
 interface Meta { id: string; pharmacy: string; plan: string; updatedAt: number; }
-interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; }
+interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; }
 
 // ──────────────────────────────────────────────────────────────────────
 //  DIRECTION ARTISTIQUE
@@ -95,6 +95,7 @@ const BADGES = [
 ];
 
 const PAGE_FORMATS = [
+  { id: 'fit', name: '1 / page', w: 0, h: 0 },
   { id: 'A4', name: 'A4', w: 210, h: 297 },
   { id: 'A5', name: 'A5', w: 148, h: 210 },
   { id: 'A3', name: 'A3', w: 297, h: 420 },
@@ -168,12 +169,14 @@ function footEls(l: Label, o: SeedOpts): El[] {
   const dt = dateText(l.data);
   // coordonnées de la zone logo + pied selon orientation
   const lx = o.landscape ? 88 : 6, ly = o.landscape ? 80 : 84, lw = o.landscape ? 10 : 17, lh = o.landscape ? 16 : 9;
-  if (o.landscape) {
-    if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 3, y: 82, w: 55, size: 0.06, color: DA.band, weight: 700, align: 'left' });
-    if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 3, y: 91, w: 60, size: 0.048, color: DA.ink, weight: 500, align: 'left' });
-  } else {
-    if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 26, y: 87.5, w: 58, size: 0.019, color: DA.band, weight: 700, align: 'left' });
-    if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 26, y: 92, w: 60, size: 0.016, color: DA.ink, weight: 500, align: 'left' });
+  if (!o.small) {
+    if (o.landscape) {
+      if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 3, y: 82, w: 55, size: 0.06, color: DA.band, weight: 700, align: 'left' });
+      if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 3, y: 91, w: 60, size: 0.048, color: DA.ink, weight: 500, align: 'left' });
+    } else {
+      if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 26, y: 87.5, w: 58, size: 0.019, color: DA.band, weight: 700, align: 'left' });
+      if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 26, y: 92, w: 60, size: 0.016, color: DA.ink, weight: 500, align: 'left' });
+    }
   }
   // EMPLACEMENT LOGO (image si dispo, sinon placeholder visible en édition)
   if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: lx, y: ly, w: lw, size: 0, color: '#000', weight: 400, align: 'left' });
@@ -371,21 +374,25 @@ function layout(p: Project) {
   const fmt = PAGE_FORMATS.find(f => f.id === p.pageFormat) || PAGE_FORMATS[0];
   const lw = p.labelWmm * MM, lh = p.labelHmm * MM;
   const m = MARGIN_MM * MM, gap = GAP_MM * MM, header = HEADER_MM * MM;
-  let pageWmm: number, pageHmm: number, perRow: number;
-  if (fmt.id === 'roll') {
-    pageWmm = p.labelWmm + MARGIN_MM * 2; perRow = 1;
+  let pageWmm: number, pageHmm: number, perRow: number, capacity: number;
+  if (fmt.id === 'roll' || fmt.id === 'fit') {
+    // page = largeur de l'étiquette, empilage vertical
+    pageWmm = p.labelWmm; perRow = 1;
     const n = Math.max(1, p.labels.length);
-    pageHmm = MARGIN_MM * 2 + n * p.labelHmm + (n - 1) * GAP_MM;
+    pageHmm = n * p.labelHmm + (n - 1) * GAP_MM;
+    capacity = n;
   } else {
     pageWmm = fmt.w; pageHmm = fmt.h;
     perRow = Math.max(1, Math.floor((pageWmm * MM - m * 2 + gap) / (lw + gap)));
+    const usableH0 = pageHmm * MM - m * 2 - header;
+    const rowsFit = Math.max(1, Math.floor((usableH0 + gap) / (lh + gap)));
+    capacity = perRow * rowsFit;
   }
   const PW = pageWmm * MM, PH = pageHmm * MM;
-  const usableW = PW - m * 2, usableH = PH - m * 2 - header;
-  const rowsFit = Math.max(1, Math.floor((usableH + gap) / (lh + gap)));
-  const capacity = fmt.id === 'roll' ? (p.labels.length || 1) : perRow * rowsFit;
+  const usableW = PW - m * 2;
   const landscape = lw > lh * 1.5;
-  return { fmt, lw, lh, m, gap, header, PW, PH, pageWmm, pageHmm, usableW, perRow, capacity, landscape };
+  const small = Math.min(p.labelWmm, p.labelHmm) < 80;
+  return { fmt, lw, lh, m, gap, header, PW, PH, pageWmm, pageHmm, usableW, perRow, capacity, landscape, small };
 }
 
 function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSelEl, onAdd, dragStart, delEl, forPrint }: {
@@ -396,7 +403,7 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
   delEl: (id: string) => void; forPrint?: boolean;
 }) {
   const L = layout(project);
-  const opts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: editing && !forPrint };
+  const opts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: editing && !forPrint, small: L.small };
   return (
     <div style={{ width: L.PW, height: L.PH, background: '#fff', transform: forPrint ? undefined : `scale(${scale})`, transformOrigin: 'top left', boxShadow: forPrint ? 'none' : '0 10px 40px rgba(0,0,0,0.18)', position: 'relative', flexShrink: 0 }}
       onClick={() => { if (editing) { setSelLabel(null); setSelEl(null); } }}>
@@ -563,8 +570,8 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
 
   useEffect(() => {
     const fit = () => {
-      if (window.innerWidth < 820) { const availW = window.innerWidth - 20, availH = window.innerHeight - 150; setScale(Math.min(1.3, Math.max(0.12, Math.min(availH / L.PH, availW / L.PW)))); }
-      else { const availH = window.innerHeight - 130, availW = window.innerWidth - 340 - 80; setScale(Math.min(0.95, Math.max(0.2, Math.min(availH / L.PH, availW / L.PW)))); }
+      if (window.innerWidth < 820) { const availW = window.innerWidth - 20, availH = window.innerHeight - 150; setScale(Math.min(3.5, Math.max(0.12, Math.min(availH / L.PH, availW / L.PW)))); }
+      else { const availH = window.innerHeight - 130, availW = window.innerWidth - 340 - 80; setScale(Math.min(3.5, Math.max(0.2, Math.min(availH / L.PH, availW / L.PW)))); }
     };
     fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit);
   }, [L.PH, L.PW]);
@@ -580,7 +587,7 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
   });
 
   const current = project.labels.find(l => l.id === selLabel) || null;
-  const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true };
+  const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true, small: L.small };
   const currentEl: El | null = current && selEl ? resolveEls(current, seedOpts).find(e => e.id === selEl) || null : null;
   const overflow = project.labels.length > L.capacity;
 
@@ -662,7 +669,7 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}>
                   <SectionTitle>Dimensions des étiquettes</SectionTitle>
                   <Field label="Modèles courants (mm)">
-                    <select value={`${project.labelWmm}x${project.labelHmm}`} onChange={e => { const [w, h] = e.target.value.split('x').map(Number); setSize(w, h); }} style={{ ...inp, cursor: 'pointer' }}>
+                    <select value={`${project.labelWmm}x${project.labelHmm}`} onChange={e => { const [w, h] = e.target.value.split('x').map(Number); setSize(w, h); setProject(pp => ({ ...pp, pageFormat: (w === 210 && h === 297) ? 'A4' : 'fit' })); }} style={{ ...inp, cursor: 'pointer' }}>
                       <option value={`${project.labelWmm}x${project.labelHmm}`}>{project.labelWmm}×{project.labelHmm} (actuel)</option>
                       {LABEL_PRESETS.map(p => <option key={p.name} value={`${p.w}x${p.h}`}>{p.name}</option>)}
                     </select>
