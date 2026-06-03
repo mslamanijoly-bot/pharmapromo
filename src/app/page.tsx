@@ -21,7 +21,7 @@ interface El {
   x: number; y: number; w?: number; h?: number;
   size: number; font: string; color: string; bg?: string;
   weight: number; align: Align; rot: number;
-  strike?: boolean; radius?: number; shape?: 'circle'; shadow?: boolean;
+  strike?: boolean; radius?: number; shape?: 'circle'; shadow?: boolean; border?: string;
   hidden?: boolean; removable?: boolean;
 }
 
@@ -43,7 +43,7 @@ interface Project {
 }
 
 interface Meta { id: string; pharmacy: string; plan: string; updatedAt: number; }
-interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; }
+interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; }
 
 // ──────────────────────────────────────────────────────────────────────
 //  DIRECTION ARTISTIQUE
@@ -165,14 +165,20 @@ function dateText(d: LabelData): string | null {
 function footEls(l: Label, o: SeedOpts): El[] {
   const out: El[] = [];
   const dt = dateText(l.data);
+  // coordonnées de la zone logo + pied selon orientation
+  const lx = o.landscape ? 88 : 6, ly = o.landscape ? 80 : 84, lw = o.landscape ? 10 : 17, lh = o.landscape ? 16 : 9;
   if (o.landscape) {
-    if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 3, y: 80, w: 55, size: 0.06, color: DA.band, weight: 700, align: 'left' });
-    if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 3, y: 90, w: 60, size: 0.05, color: DA.ink, weight: 400, align: 'left' });
-    if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 86, y: 78, w: 11, size: 0, color: '#000', weight: 400, align: 'left' });
+    if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 3, y: 82, w: 55, size: 0.06, color: DA.band, weight: 700, align: 'left' });
+    if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 3, y: 91, w: 60, size: 0.048, color: DA.ink, weight: 500, align: 'left' });
   } else {
-    if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 24, y: 88, w: 60, size: 0.018, color: DA.band, weight: 700, align: 'left' });
-    if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 24, y: 92.5, w: 62, size: 0.015, color: DA.ink, weight: 400, align: 'left' });
-    if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 5, y: 87, w: 15, size: 0, color: '#000', weight: 400, align: 'left' });
+    if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 26, y: 87.5, w: 58, size: 0.019, color: DA.band, weight: 700, align: 'left' });
+    if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 26, y: 92, w: 60, size: 0.016, color: DA.ink, weight: 500, align: 'left' });
+  }
+  // EMPLACEMENT LOGO (image si dispo, sinon placeholder visible en édition)
+  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: lx, y: ly, w: lw, size: 0, color: '#000', weight: 400, align: 'left' });
+  else if (o.editing) {
+    out.push({ ...B, id: 'logoBox', kind: 'box', x: lx, y: ly, w: lw, h: lh, bg: 'transparent', border: '1.5px dashed rgba(0,0,0,0.28)', radius: 6, size: 0, color: '#000', weight: 400, align: 'left' });
+    out.push({ ...B, id: 'logoTxt', kind: 'text', text: '📷 LOGO', x: lx, y: ly + lh * 0.32, w: lw, size: o.landscape ? 0.07 : 0.02, color: 'rgba(0,0,0,0.4)', weight: 700, align: 'center' });
   }
   return out;
 }
@@ -196,10 +202,10 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       // RÉGLETTE (paysage) — PROMOTION à gauche, cercle prix à droite
       return [
         { ...B, id: 'promo', kind: 'text', text: 'PROMOTION', x: 3, y: 6, size: 0.17, color: DA.promo, weight: 900, align: 'left' },
-        { ...B, id: 'band', kind: 'box', x: 3, y: 33, w: 52, h: 19, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left', radius: 4 },
-        { ...B, id: 'cat', kind: 'text', text: d.category, x: 3, y: 37, w: 52, size: 0.1, color: '#fff', weight: 800, align: 'center' },
-        { ...B, id: 'product', kind: 'text', text: d.product, x: 3, y: 56, w: 54, size: 0.12, color: DA.green, weight: 800, align: 'left' },
-        ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 3, y: 70, w: 54, size: 0.085, color: DA.green, weight: 500, align: 'left' as Align }] : []),
+        { ...B, id: 'band', kind: 'box', x: 3, y: 30, w: 54, h: 17, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left', radius: 4 },
+        { ...B, id: 'cat', kind: 'text', text: d.category, x: 3, y: 34, w: 54, size: 0.072, color: '#fff', weight: 800, align: 'center' },
+        { ...B, id: 'product', kind: 'text', text: d.product, x: 3, y: 51, w: 55, size: 0.078, color: '#21392B', weight: 800, align: 'left' },
+        ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 3, y: 71, w: 55, size: 0.058, color: DA.green, weight: 600, align: 'left' as Align }] : []),
         { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 60, y: 2, w: 42, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
         ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: `${d.normalPrice}€`, x: 70, y: 9, w: 22, size: 0.085, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
         { ...B, id: 'priceInt', kind: 'text', text: intp, x: 63, y: 18, size: 0.42, color: DA.priceY, weight: 900, align: 'left' },
@@ -227,8 +233,8 @@ function seedEls(l: Label, o: SeedOpts): El[] {
         { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: `-${remise}€`, x: 31, y: 42, size: 0.05, color: '#fff', weight: 900, align: 'left' as Align },
         { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 45, y: 42.5, w: 26, size: 0.021, color: '#fff', weight: 800, align: 'left' as Align },
       ] : []),
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 59, w: 88, size: 0.07, color: DA.green, weight: 800, align: 'center' },
-      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 76, w: 88, size: 0.05, color: DA.green, weight: 500, align: 'center' as Align }] : []),
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 56, w: 88, size: 0.05, color: '#21392B', weight: 800, align: 'center' },
+      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 70, w: 88, size: 0.037, color: DA.green, weight: 600, align: 'center' as Align }] : []),
       ...footEls(l, o),
     ];
   }
@@ -248,8 +254,8 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       { ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 24, y: 17, w: 52, size: 0.028, color: '#fff', weight: 800, align: 'center' },
       { ...B, id: 'priceInt', kind: 'text', text: pf(d.couponValue).toString().split('.')[0] || '0', x: 30, y: 22, size: 0.16, color: DA.priceY, weight: 900, align: 'left' },
       { ...B, id: 'euro', kind: 'text', text: '€', x: 58, y: 23, size: 0.06, color: DA.priceY, weight: 900, align: 'left' },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 60, w: 88, size: 0.07, color: DA.green, weight: 800, align: 'center' },
-      { ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 6, y: 78, w: 88, size: 0.04, color: DA.green, weight: 600, align: 'center' },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 58, w: 88, size: 0.05, color: '#21392B', weight: 800, align: 'center' },
+      { ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 6, y: 72, w: 88, size: 0.035, color: DA.green, weight: 600, align: 'center' },
     ];
   }
 
@@ -267,8 +273,8 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       { ...B, id: 'euro', kind: 'text', text: '€', x: 58, y: 21, size: 0.055, color: DA.priceY, weight: 900, align: 'left' },
       { ...B, id: 'cents', kind: 'text', text: Math.round((lp - Math.floor(lp)) * 100).toString().padStart(2, '0'), x: 58, y: 29, size: 0.06, color: DA.priceY, weight: 900, align: 'left' },
       { ...B, id: 'subl', kind: 'text', text: `${paid} acheté${paid > 1 ? 's' : ''} + ${free} offert${free > 1 ? 's' : ''}`, x: 22, y: 44, w: 56, size: 0.03, color: '#fff', weight: 700, align: 'center' },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 60, w: 88, size: 0.07, color: DA.green, weight: 800, align: 'center' },
-      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 77, w: 88, size: 0.045, color: DA.green, weight: 500, align: 'center' as Align }] : []),
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 58, w: 88, size: 0.05, color: '#21392B', weight: 800, align: 'center' },
+      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 72, w: 88, size: 0.037, color: DA.green, weight: 600, align: 'center' as Align }] : []),
     ];
   }
 
@@ -312,6 +318,7 @@ function renderEl(e: El, H: number): CSSProperties {
   if (e.kind === 'box') {
     if (e.shape === 'circle') { st.width = `${e.w}%`; st.aspectRatio = '1 / 1'; st.height = 'auto'; st.borderRadius = '50%'; st.background = e.bg; }
     else { st.height = `${e.h ?? 10}%`; st.background = e.bg; st.borderRadius = e.radius ? `${e.radius}px` : undefined; }
+    if (e.border) st.border = e.border;
     if (e.shadow) st.boxShadow = '0 8px 22px rgba(0,0,0,0.20)';
     st.fontSize = 0;
   } else st.fontSize = fs;
@@ -340,7 +347,7 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
   return (
     <div data-labelbox onClick={(ev) => { ev.stopPropagation(); onSelectLabel(); }}
       style={{ position: 'relative', width: W, height: H, background: label.bg, border: `1px solid ${selectedLabel && editing ? label.accent : 'rgba(0,0,0,0.08)'}`, borderRadius: 6, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${label.accent}44` : 'none', flexShrink: 0 }}>
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${H * 0.16}px ${H * 0.16}px`, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.7, pointerEvents: 'none' }} />
       {els.map(e => {
         const sel = editing && selectedEl === e.id;
         return (
@@ -388,7 +395,7 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
   delEl: (id: string) => void; forPrint?: boolean;
 }) {
   const L = layout(project);
-  const opts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer };
+  const opts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: editing && !forPrint };
   return (
     <div style={{ width: L.PW, height: L.PH, background: '#fff', transform: forPrint ? undefined : `scale(${scale})`, transformOrigin: 'top center', boxShadow: forPrint ? 'none' : '0 10px 40px rgba(0,0,0,0.18)', position: 'relative', flexShrink: 0 }}
       onClick={() => { if (editing) { setSelLabel(null); setSelEl(null); } }}>
@@ -551,7 +558,7 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
   }, [L.PH, L.PW]);
 
   const current = project.labels.find(l => l.id === selLabel) || null;
-  const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer };
+  const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true };
   const currentEl: El | null = current && selEl ? resolveEls(current, seedOpts).find(e => e.id === selEl) || null : null;
   const overflow = project.labels.length > L.capacity;
 
