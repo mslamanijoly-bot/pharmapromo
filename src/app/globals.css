@@ -13,9 +13,7 @@ input[type="color"] { cursor: pointer; }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 @media print {
-  body > * { display: none !important; }
-  #print-label { display: block !important; }
-  #print-label * { visibility: visible !important; }
-  @page { margin: 0; }
+  html, body { background: #fff !important; }
 }
