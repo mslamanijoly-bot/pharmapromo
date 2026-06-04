@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, CSSProperties } from 'react';
+import { MM, pf, ff, fitSize, priceParts, parseTable, paginate, chunk } from '@/lib/calc';
 
 /* ════════════════════════════════════════════════════════════════════
    PHARMAPROMO STUDIO
@@ -39,19 +40,18 @@ interface Label { id: string; type: PromoType; accent: string; bg: string; data:
 interface Project {
   pharmacy: string; plan: string; logo: string | null; disclaimer: string;
   pageFormat: string; labelWmm: number; labelHmm: number;
+  printPaper?: string; printMarginMm?: number;
   labels: Label[]; updatedAt?: number;
 }
 
+const PAPERS: Record<string, { name: string; w: number; h: number }> = {
+  A4: { name: 'A4', w: 210, h: 297 },
+  A5: { name: 'A5', w: 148, h: 210 },
+  A3: { name: 'A3', w: 297, h: 420 },
+};
+
 interface Meta { id: string; pharmacy: string; plan: string; updatedAt: number; }
 interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; aspect?: number; }
-
-// Auto-ajuste la taille de police (fraction de hauteur) pour qu'un texte tienne
-// dans sa largeur sur ~maxLines lignes, quelle que soit sa longueur.
-function fitSize(text: string, wFrac: number, aspect: number, base: number, maxLines = 2, floor = 0.03) {
-  const len = Math.max(1, (text || '').trim().length);
-  const cap = (wFrac * aspect * maxLines) / (0.55 * len);
-  return Math.round(Math.max(floor, Math.min(base, cap)) * 1000) / 1000;
-}
 
 // ──────────────────────────────────────────────────────────────────────
 //  DIRECTION ARTISTIQUE
@@ -118,13 +118,10 @@ const LABEL_PRESETS = [
   { name: 'Petite — 48×45', w: 48, h: 45 },
 ];
 
-const MM = 96 / 25.4;
 const MARGIN_MM = 0, HEADER_MM = 0, GAP_MM = 3;
 
 const SYS = FONTS[0].css;
 const DISCLAIMER = '*Non cumulable avec d’autres promotions en cours et dans la limite des stocks disponibles.';
-const pf = (s: string) => parseFloat((s || '').replace(',', '.')) || 0;
-const ff = (n: number) => n.toFixed(2).replace('.', ',');
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 const newData = (): LabelData => ({
@@ -143,7 +140,7 @@ function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelData>): La
 function defaultProject(): Project {
   return {
     pharmacy: 'Pharmacie Homme de Fer', plan: 'Plan promotionnel', logo: null, disclaimer: DISCLAIMER,
-    pageFormat: 'A4', labelWmm: 210, labelHmm: 297,
+    pageFormat: 'A4', labelWmm: 210, labelHmm: 297, printPaper: 'A4', printMarginMm: 0,
     labels: [newLabel('prix-promo', { category: 'COMPLÉMENT ALIMENTAIRE', product: 'Chondro-haid Fort ARKOPHARMA', qtyLabel: 'Lot de 3 x 60 gélules*', normalPrice: '31,90', promoPrice: '26,90' })],
   };
 }
@@ -153,6 +150,8 @@ function migrate(p: Project): Project {
   if (!q.pageFormat) q.pageFormat = 'A4';
   if (!q.labelWmm || !q.labelHmm) { q.labelWmm = 210; q.labelHmm = 297; }
   if (q.disclaimer == null) q.disclaimer = DISCLAIMER;
+  if (!q.printPaper) q.printPaper = 'A4';
+  if (q.printMarginMm == null) q.printMarginMm = 0;
   q.labels = (q.labels || []).map(l => ({ ...l, data: { ...newData(), ...l.data } }));
   return q;
 }
@@ -195,19 +194,11 @@ function footEls(l: Label, o: SeedOpts): El[] {
   return out;
 }
 
-function priceParts(d: LabelData) {
-  const promo = pf(d.promoPrice), normal = pf(d.normalPrice);
-  const intp = Math.floor(promo).toString();
-  const cents = Math.round((promo - Math.floor(promo)) * 100).toString().padStart(2, '0');
-  const remise = normal > promo ? Math.round(normal - promo).toString() : '';
-  return { promo, normal, intp, cents, remise };
-}
-
 function seedEls(l: Label, o: SeedOpts): El[] {
   const a = l.accent, d = l.data;
   const asp = o.aspect || 0.7;
   const circleBg = `radial-gradient(circle at 38% 30%, #ffffff3a, ${a} 46%, ${DA.red2})`;
-  const { normal, intp, cents, remise } = priceParts(d);
+  const { normal, intp, cents, remise } = priceParts(d.normalPrice, d.promoPrice);
 
   // ===== PRIX PROMO =====
   if (l.type === 'prix-promo') {
@@ -433,26 +424,40 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
 //  FEUILLE D'IMPRESSION (toujours A4, étiquettes à taille réelle, tuilées)
 // ──────────────────────────────────────────────────────────────────────
 
-function PrintSheet({ project }: { project: Project }) {
+// Calcule la disposition d'impression : pages A4 (ou A5/A3), étiquettes à
+// taille réelle, tuilées selon la place, avec pagination explicite.
+function printPlan(project: Project) {
+  const paper = PAPERS[project.printPaper || 'A4'] || PAPERS.A4;
+  const margin = project.printMarginMm ?? 0;
+  const gapMm = project.labels.length > 1 ? GAP_MM : 0;
+  const { cols, rows, perPage } = paginate(project.labelWmm, project.labelHmm, paper.w, paper.h, margin, gapMm);
+  const labels = project.labels.length ? project.labels : [newLabel()];
+  const pages = chunk(labels, perPage);
+  const tiling = labels.length > 1 || project.labelWmm < paper.w - 2 || project.labelHmm < paper.h - 2;
+  return { paper, margin, gapMm, cols, rows, perPage, pages, tiling };
+}
+
+function PrintSheet({ project, screen }: { project: Project; screen?: boolean }) {
   const lw = project.labelWmm * MM, lh = project.labelHmm * MM;
-  const A4W = 210 * MM;
+  const plan = printPlan(project);
   const opts: SeedOpts = {
     landscape: lw > lh * 1.5, logo: project.logo, disclaimer: project.disclaimer,
     editing: false, small: Math.min(project.labelWmm, project.labelHmm) < 80,
     aspect: project.labelWmm / project.labelHmm,
   };
-  // tuilage si plusieurs étiquettes ou si l'étiquette est plus petite que l'A4
-  const tiling = project.labels.length > 1 || lw < A4W - 4 || lh < 297 * MM - 4;
-  const g = GAP_MM * MM;
-  const labels = project.labels.length ? project.labels : [newLabel()];
+  const g = plan.gapMm * MM, m = plan.margin * MM;
   return (
-    <div style={{ width: A4W, fontSize: 0, lineHeight: 0 }}>
-      {labels.map(l => (
-        <div key={l.id} style={{ display: 'inline-block', verticalAlign: 'top', width: lw, height: lh, marginRight: tiling ? g : 0, marginBottom: tiling ? g : 0, breakInside: 'avoid', pageBreakInside: 'avoid', outline: tiling ? '0.4px dashed rgba(0,0,0,0.35)' : 'none' }}>
-          <LabelView label={l} W={lw} H={lh} editing={false} opts={opts} selectedLabel={false} selectedEl={null} onSelectLabel={() => {}} onSelectEl={() => {}} onDragStart={() => {}} onDelEl={() => {}} />
+    <>
+      {plan.pages.map((page, pi) => (
+        <div key={pi} style={{ width: plan.paper.w * MM, height: plan.paper.h * MM, boxSizing: 'border-box', padding: m, background: '#fff', breakAfter: pi < plan.pages.length - 1 ? 'page' : 'auto', pageBreakAfter: pi < plan.pages.length - 1 ? 'always' : 'auto', display: 'flex', flexWrap: 'wrap', alignContent: 'flex-start', gap: g, margin: screen ? '0 auto 14px' : 0, boxShadow: screen ? '0 6px 24px rgba(0,0,0,0.25)' : 'none', overflow: 'hidden' }}>
+          {page.map(l => (
+            <div key={l.id} style={{ width: lw, height: lh, flexShrink: 0, outline: plan.tiling ? '0.4px dashed rgba(0,0,0,0.35)' : 'none' }}>
+              <LabelView label={l} W={lw} H={lh} editing={false} opts={opts} selectedLabel={false} selectedEl={null} onSelectLabel={() => {}} onSelectEl={() => {}} onDragStart={() => {}} onDelEl={() => {}} />
+            </div>
+          ))}
         </div>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -464,6 +469,13 @@ const inp: CSSProperties = { width: '100%', padding: '7px 9px', background: '#1e
 const lbl: CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: SYS };
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div style={{ marginBottom: 10 }}><label style={lbl}>{label}</label>{children}</div>; }
 function TextInp({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) { return <Field label={label}><input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={inp} /></Field>; }
+// Champ prix : n'accepte que chiffres + virgule, normalise le point en virgule
+function PriceInp({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return <Field label={label}><input inputMode="decimal" value={value} placeholder="0,00" onChange={e => onChange(e.target.value.replace(/[^\d.,]/g, '').replace('.', ','))} style={inp} /></Field>;
+}
+function Warn({ children }: { children: React.ReactNode }) {
+  return <div style={{ background: '#3f1d1d', border: '1px solid #7f1d1d', borderRadius: 5, padding: '7px 9px', fontSize: 12, color: '#fca5a5', marginBottom: 10 }}>{children}</div>;
+}
 function SectionTitle({ children }: { children: React.ReactNode }) { return <div style={{ fontSize: 10, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '4px 0 10px', fontFamily: SYS }}>{children}</div>; }
 function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return <Field label={label}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="color" value={value.length === 7 ? value : '#000000'} onChange={e => onChange(e.target.value)} style={{ width: 34, height: 28, border: '1px solid #334155', borderRadius: 4, background: 'none', cursor: 'pointer', padding: 2 }} /><span style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>{value}</span></div></Field>;
@@ -483,10 +495,11 @@ function ContentForm({ l, set }: { l: Label; set: (k: keyof LabelData, v: string
   const qty = <TextInp label="Descriptif / quantité" value={d.qtyLabel} onChange={v => set('qtyLabel', v)} placeholder="Lot de 3 x 60 gélules*" />;
   const dates = G(<TextInp label="Date début" value={d.dateStart} onChange={v => set('dateStart', v)} placeholder="01/06/2026" />, <TextInp label="Date fin" value={d.dateEnd} onChange={v => set('dateEnd', v)} placeholder="30/06/2026" />);
   let middle: React.ReactNode = null;
-  if (l.type === 'prix-promo') middle = <>{G(<TextInp label="Prix normal €" value={d.normalPrice} onChange={v => set('normalPrice', v)} />, <TextInp label="Prix promo €" value={d.promoPrice} onChange={v => set('promoPrice', v)} />)}{pf(d.normalPrice) > pf(d.promoPrice) && <div style={{ background: '#0d2137', border: '1px solid #1e3a5f', borderRadius: 5, padding: '7px 9px', fontSize: 12, color: '#38bdf8', marginBottom: 10 }}>💶 Remise immédiate calculée : −{ff(pf(d.normalPrice) - pf(d.promoPrice))} €</div>}</>;
-  else if (l.type === 'bon-reduction') middle = G(<TextInp label="Valeur bon €" value={d.couponValue} onChange={v => set('couponValue', v)} />, <TextInp label="Validité" value={d.couponExpiry} onChange={v => set('couponExpiry', v)} />);
-  else if (l.type === 'remise-lot') middle = <>{G(<TextInp label="Qté totale" value={d.lotQty} onChange={v => set('lotQty', v)} />, <TextInp label="Dont offert(s)" value={d.lotFree} onChange={v => set('lotFree', v)} />)}<TextInp label="Prix du lot €" value={d.lotPrice} onChange={v => set('lotPrice', v)} /></>;
-  else middle = <>{G(<TextInp label="P1 — qté" value={d.t1q} onChange={v => set('t1q', v)} />, <TextInp label="P1 — prix" value={d.t1p} onChange={v => set('t1p', v)} />)}{G(<TextInp label="P2 — qté" value={d.t2q} onChange={v => set('t2q', v)} />, <TextInp label="P2 — prix" value={d.t2p} onChange={v => set('t2p', v)} />)}{G(<TextInp label="P3 — qté" value={d.t3q} onChange={v => set('t3q', v)} />, <TextInp label="P3 — prix" value={d.t3p} onChange={v => set('t3p', v)} />)}</>;
+  const normal = pf(d.normalPrice), promo = pf(d.promoPrice);
+  if (l.type === 'prix-promo') middle = <>{G(<PriceInp label="Prix normal €" value={d.normalPrice} onChange={v => set('normalPrice', v)} />, <PriceInp label="Prix promo €" value={d.promoPrice} onChange={v => set('promoPrice', v)} />)}{normal > promo && <div style={{ background: '#0d2137', border: '1px solid #1e3a5f', borderRadius: 5, padding: '7px 9px', fontSize: 12, color: '#38bdf8', marginBottom: 10 }}>💶 Remise immédiate calculée : −{ff(normal - promo)} €</div>}{normal > 0 && promo > 0 && promo >= normal && <Warn>⚠ Le prix promo doit être <strong>inférieur</strong> au prix normal.</Warn>}</>;
+  else if (l.type === 'bon-reduction') middle = G(<PriceInp label="Valeur bon €" value={d.couponValue} onChange={v => set('couponValue', v)} />, <TextInp label="Validité" value={d.couponExpiry} onChange={v => set('couponExpiry', v)} />);
+  else if (l.type === 'remise-lot') middle = <>{G(<TextInp label="Qté totale" value={d.lotQty} onChange={v => set('lotQty', v)} />, <TextInp label="Dont offert(s)" value={d.lotFree} onChange={v => set('lotFree', v)} />)}<PriceInp label="Prix du lot €" value={d.lotPrice} onChange={v => set('lotPrice', v)} />{(parseInt(d.lotFree) || 0) >= (parseInt(d.lotQty) || 0) && <Warn>⚠ Le nombre d&apos;offerts doit être inférieur à la quantité totale.</Warn>}</>;
+  else middle = <>{G(<TextInp label="P1 — qté" value={d.t1q} onChange={v => set('t1q', v)} />, <PriceInp label="P1 — prix" value={d.t1p} onChange={v => set('t1p', v)} />)}{G(<TextInp label="P2 — qté" value={d.t2q} onChange={v => set('t2q', v)} />, <PriceInp label="P2 — prix" value={d.t2p} onChange={v => set('t2p', v)} />)}{G(<TextInp label="P3 — qté" value={d.t3q} onChange={v => set('t3q', v)} />, <PriceInp label="P3 — prix" value={d.t3p} onChange={v => set('t3p', v)} />)}</>;
   return <>{cat}{prod}{middle}{qty}{dates}</>;
 }
 
@@ -510,13 +523,6 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
 // ──────────────────────────────────────────────────────────────────────
 //  IMPORT CSV / EXCEL
 // ──────────────────────────────────────────────────────────────────────
-
-function parseTable(text: string): string[][] {
-  const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim().length);
-  const sample = lines[0] || '';
-  const sep = sample.includes('\t') ? '\t' : (sample.includes(';') ? ';' : ',');
-  return lines.map(l => l.split(sep).map(c => c.trim().replace(/^"|"$/g, '')));
-}
 
 function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (labels: Label[]) => void }) {
   const [text, setText] = useState('');
@@ -593,12 +599,13 @@ function useMobile() {
   return m;
 }
 
-function Studio({ project, setProject, onBack, saving, mode }: { project: Project; setProject: (fn: (p: Project) => Project) => void; onBack: () => void; saving: string; mode: 'server' | 'local'; }) {
+function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo, canRedo }: { project: Project; setProject: (fn: (p: Project) => Project) => void; onBack: () => void; saving: string; mode: 'server' | 'local'; undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean; }) {
   const [selLabel, setSelLabel] = useState<string | null>(null);
   const [selEl, setSelEl] = useState<string | null>(null);
   const [editing, setEditing] = useState(true);
   const [scale, setScale] = useState(0.6);
   const [showImport, setShowImport] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const drag = useRef<DragState | null>(null);
   const isMobile = useMobile();
@@ -659,6 +666,19 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, [updateLabel]);
 
+  // Raccourcis Annuler / Refaire (hors champs de saisie)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if ((e.ctrlKey || e.metaKey) && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
+
   return (
     <>
     <div id="app" style={{ display: 'flex', height: '100vh', fontFamily: SYS, overflow: 'hidden' }}>
@@ -670,11 +690,15 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
             <div style={{ fontSize: 11, color: saving === 'Enregistré' ? '#4ade80' : '#fbbf24' }}>{saving}</div>
             <div style={{ width: 1, height: 24, background: '#1e293b' }} />
             <div style={{ display: 'flex', gap: 4 }}>{PAGE_FORMATS.map(f => { const on = project.pageFormat === f.id; return <button key={f.id} onClick={() => setProject(p => ({ ...p, pageFormat: f.id }))} style={{ padding: '5px 9px', background: on ? '#16a34a' : '#1e293b', color: on ? '#fff' : '#94a3b8', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{f.name}</button>; })}</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={undo} disabled={!canUndo} title="Annuler (Ctrl+Z)" style={{ padding: '5px 9px', background: '#1e293b', color: canUndo ? '#cbd5e1' : '#475569', border: '1px solid #334155', borderRadius: 6, cursor: canUndo ? 'pointer' : 'default', fontSize: 13 }}>↶</button>
+              <button onClick={redo} disabled={!canRedo} title="Refaire (Ctrl+Y)" style={{ padding: '5px 9px', background: '#1e293b', color: canRedo ? '#cbd5e1' : '#475569', border: '1px solid #334155', borderRadius: 6, cursor: canRedo ? 'pointer' : 'default', fontSize: 13 }}>↷</button>
+            </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button onClick={() => setEditing(e => !e)} style={{ padding: '7px 12px', background: editing ? '#16a34a22' : '#1e293b', color: editing ? '#4ade80' : '#94a3b8', border: `1px solid ${editing ? '#16a34a' : '#334155'}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{editing ? '✓ Édition' : 'Aperçu'}</button>
               <button onClick={() => setShowImport(true)} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>⬆ Importer</button>
               <button onClick={addLabel} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Étiquette</button>
-              <button onClick={() => window.print()} style={{ padding: '7px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 800, boxShadow: '0 2px 10px #16a34a66' }}>🖨 Imprimer / PDF</button>
+              <button onClick={() => setShowPreview(true)} style={{ padding: '7px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 800, boxShadow: '0 2px 10px #16a34a66' }}>🖨 Imprimer / PDF</button>
             </div>
           </div>
           {overflow && <div style={{ background: '#7c2d12', color: '#fed7aa', fontSize: 12, padding: '6px 16px' }}>⚠ {project.labels.length} étiquettes pour {L.capacity} emplacement(s) — réduisez la taille ou changez de format.</div>}
@@ -754,6 +778,7 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
       )}
 
       {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={(labels) => { setProject(p => ({ ...p, labels: [...p.labels, ...labels] })); setShowImport(false); }} />}
+      {showPreview && <PrintPreviewModal project={project} setProject={setProject} onClose={() => setShowPreview(false)} />}
 
       <style>{`input[type=range] { accent-color: #16a34a; }`}</style>
     </div>
@@ -761,8 +786,55 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
     <div id="print-root" style={{ display: 'none' }}>
       <PrintSheet project={project} />
     </div>
-    <style>{`@media print { @page { size: A4; margin: 0; } html, body { background: #fff !important; } #app { display: none !important; } #print-root { display: block !important; } }`}</style>
+    <style>{`@media print { @page { size: ${(PAPERS[project.printPaper || 'A4'] || PAPERS.A4).name}; margin: 0; } html, body { background: #fff !important; } #app { display: none !important; } #print-root { display: block !important; } }`}</style>
     </>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+//  APERÇU IMPRESSION (+ choix papier & marge)
+// ──────────────────────────────────────────────────────────────────────
+
+function PrintPreviewModal({ project, setProject, onClose }: { project: Project; setProject: (fn: (p: Project) => Project) => void; onClose: () => void }) {
+  const plan = printPlan(project);
+  const pageWpx = plan.paper.w * MM, pageHpx = plan.paper.h * MM;
+  const s = Math.min(0.62, 470 / pageWpx);
+  const totalH = plan.pages.length * pageHpx + (plan.pages.length - 1) * 14;
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.75)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SYS, padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 620, maxWidth: '95vw', maxHeight: '92vh', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 20, color: '#e2e8f0', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>Aperçu impression</div>
+          <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+          <div style={{ flex: '1 1 120px' }}>
+            <label style={lbl}>Papier</label>
+            <select value={project.printPaper || 'A4'} onChange={e => setProject(p => ({ ...p, printPaper: e.target.value }))} style={{ ...inp, cursor: 'pointer' }}>
+              {Object.entries(PAPERS).map(([id, p]) => <option key={id} value={id}>{p.name} ({p.w}×{p.h} mm)</option>)}
+            </select>
+          </div>
+          <div style={{ flex: '1 1 160px' }}>
+            <label style={lbl}>Marge : {project.printMarginMm ?? 0} mm</label>
+            <input type="range" min={0} max={15} step={1} value={project.printMarginMm ?? 0} onChange={e => setProject(p => ({ ...p, printMarginMm: parseInt(e.target.value) }))} style={{ width: '100%' }} />
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
+          {project.labels.length} étiquette{project.labels.length > 1 ? 's' : ''} · <strong style={{ color: '#cbd5e1' }}>{plan.perPage}</strong> / feuille ({plan.cols}×{plan.rows}) · <strong style={{ color: '#cbd5e1' }}>{plan.pages.length}</strong> feuille{plan.pages.length > 1 ? 's' : ''} {plan.paper.name}
+        </div>
+        <div style={{ flex: 1, overflow: 'auto', background: '#334155', borderRadius: 8, padding: 14, minHeight: 200 }}>
+          <div style={{ height: totalH * s, width: pageWpx * s, margin: '0 auto', position: 'relative' }}>
+            <div style={{ transform: `scale(${s})`, transformOrigin: 'top left', position: 'absolute', top: 0, left: 0 }}>
+              <PrintSheet project={project} screen />
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 14, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '9px 16px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Fermer</button>
+          <button onClick={() => window.print()} style={{ padding: '9px 20px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 800 }}>🖨 Imprimer maintenant</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -826,7 +898,13 @@ export default function Home() {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [saving, setSaving] = useState('Enregistré');
   const [loginErr, setLoginErr] = useState('');
+  const [histVer, setHistVer] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const histTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const past = useRef<Project[]>([]);
+  const future = useRef<Project[]>([]);
+  const committed = useRef<Project | null>(null);
+  const projectRef = useRef<Project | null>(null);
 
   const refreshList = useCallback(async (s: Store) => { try { setMetas(await s.list()); } catch { /* 401 */ } }, []);
 
@@ -846,24 +924,54 @@ export default function Home() {
 
   const doLogin = async (key: string) => { localStorage.setItem(KEY_LS, key); try { setMetas(await serverStore.list()); setLoginErr(''); setView('library'); } catch { localStorage.removeItem(KEY_LS); setLoginErr('Mot de passe incorrect.'); } };
   const logout = () => { localStorage.removeItem(KEY_LS); setView('login'); };
-  const openPlanche = async (id: string) => { const p = await store.get(id); if (p) { setProjectState(migrate(p)); setCurrentId(id); setSaving('Enregistré'); setView('studio'); } };
+  const openPlanche = async (id: string) => { const p = await store.get(id); if (p) { const mp = migrate(p); setProjectState(mp); projectRef.current = mp; committed.current = mp; past.current = []; future.current = []; setHistVer(v => v + 1); setCurrentId(id); setSaving('Enregistré'); setView('studio'); } };
   const newPlanche = async () => { const id = await store.create(defaultProject()); await openPlanche(id); refreshList(store); };
   const deletePlanche = async (id: string) => { await store.remove(id); refreshList(store); };
-  const backToLibrary = async () => { if (saveTimer.current) { clearTimeout(saveTimer.current); if (currentId && project) await store.save(currentId, project); } setView('library'); setCurrentId(null); setProjectState(null); refreshList(store); };
+  const backToLibrary = async () => { if (saveTimer.current) { clearTimeout(saveTimer.current); if (currentId && projectRef.current) await store.save(currentId, projectRef.current); } setView('library'); setCurrentId(null); setProjectState(null); refreshList(store); };
 
   const setProject = useCallback((fn: (p: Project) => Project) => {
     setProjectState(prev => {
       if (!prev) return prev;
       const next = fn(prev);
+      projectRef.current = next;
       setSaving('Enregistrement…');
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => { if (currentId) { await store.save(currentId, next); setSaving('Enregistré'); } }, 700);
+      // capture historique (regroupé après 500ms d'inactivité)
+      if (histTimer.current) clearTimeout(histTimer.current);
+      histTimer.current = setTimeout(() => {
+        if (committed.current && JSON.stringify(committed.current) !== JSON.stringify(next)) {
+          past.current.push(committed.current);
+          if (past.current.length > 60) past.current.shift();
+          committed.current = next; future.current = [];
+          setHistVer(v => v + 1);
+        }
+      }, 500);
       return next;
     });
   }, [currentId, store]);
 
+  const applyHistory = useCallback((target: Project) => {
+    projectRef.current = target; committed.current = target; setProjectState(target); setHistVer(v => v + 1);
+    setSaving('Enregistrement…');
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => { if (currentId) { await store.save(currentId, target); setSaving('Enregistré'); } }, 400);
+  }, [currentId, store]);
+
+  const undo = useCallback(() => {
+    if (!past.current.length || !projectRef.current) return;
+    future.current.push(projectRef.current);
+    applyHistory(past.current.pop()!);
+  }, [applyHistory]);
+  const redo = useCallback(() => {
+    if (!future.current.length || !projectRef.current) return;
+    past.current.push(projectRef.current);
+    applyHistory(future.current.pop()!);
+  }, [applyHistory]);
+
+  void histVer; // force le recalcul de canUndo/canRedo
   if (view === 'loading') return <div style={{ minHeight: '100vh', background: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontFamily: SYS }}>Chargement…</div>;
   if (view === 'login') return <Login onSubmit={doLogin} error={loginErr} />;
-  if (view === 'studio' && project) return <Studio project={project} setProject={setProject} onBack={backToLibrary} saving={saving} mode={mode} />;
+  if (view === 'studio' && project) return <Studio project={project} setProject={setProject} onBack={backToLibrary} saving={saving} mode={mode} undo={undo} redo={redo} canUndo={past.current.length > 0} canRedo={future.current.length > 0} />;
   return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onLogout={logout} />;
 }
