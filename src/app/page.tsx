@@ -23,6 +23,7 @@ interface El {
   size: number; font: string; color: string; bg?: string;
   weight: number; align: Align; rot: number;
   strike?: boolean; radius?: number; shape?: 'circle'; shadow?: boolean; border?: string;
+  track?: number; italic?: boolean;
   hidden?: boolean; removable?: boolean;
 }
 
@@ -40,7 +41,7 @@ interface Label { id: string; type: PromoType; accent: string; bg: string; data:
 interface Project {
   pharmacy: string; plan: string; logo: string | null; disclaimer: string;
   pageFormat: string; labelWmm: number; labelHmm: number;
-  printPaper?: string; printMarginMm?: number;
+  printPaper?: string; printMarginMm?: number; theme?: string;
   labels: Label[]; updatedAt?: number;
 }
 
@@ -51,7 +52,18 @@ const PAPERS: Record<string, { name: string; w: number; h: number }> = {
 };
 
 interface Meta { id: string; pharmacy: string; plan: string; updatedAt: number; }
-interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; aspect?: number; }
+interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; aspect?: number; theme?: string; }
+
+// ── DA « Apothicaire de luxe » (thème premium) ───────────────────────
+const PREMIUM = {
+  bg: '#F6F2E9',     // ivoire chaud
+  ink: '#243B2E',    // vert très foncé (texte)
+  green: '#2E5141',  // vert bouteille
+  gold: '#B08D4F',   // or / laiton
+  muted: '#8A8472',  // taupe (mentions, prix barré)
+  line: '#D8CFBE',   // filets
+};
+const SERIF = 'var(--font-playfair), Georgia, serif';
 
 // ──────────────────────────────────────────────────────────────────────
 //  DIRECTION ARTISTIQUE
@@ -85,6 +97,8 @@ const TYPES: { id: PromoType; label: string; icon: string; color: string }[] = [
 const FONTS = [
   { name: 'Poppins',   css: 'var(--font-poppins),system-ui,sans-serif' },
   { name: 'Montserrat', css: 'var(--font-montserrat),system-ui,sans-serif' },
+  { name: 'Playfair (serif)', css: 'var(--font-playfair),Georgia,serif' },
+  { name: 'Cormorant (serif)', css: 'var(--font-cormorant),Georgia,serif' },
   { name: 'Système',   css: 'system-ui,-apple-system,Segoe UI,sans-serif' },
   { name: 'Arial',     css: 'Arial,Helvetica,sans-serif' },
   { name: 'Impact',    css: 'Impact,Haettenschweiler,Arial Narrow,sans-serif' },
@@ -140,7 +154,7 @@ function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelData>): La
 function defaultProject(): Project {
   return {
     pharmacy: 'Pharmacie Homme de Fer', plan: 'Plan promotionnel', logo: null, disclaimer: DISCLAIMER,
-    pageFormat: 'A4', labelWmm: 210, labelHmm: 297, printPaper: 'A4', printMarginMm: 0,
+    pageFormat: 'A4', labelWmm: 210, labelHmm: 297, printPaper: 'A4', printMarginMm: 0, theme: 'premium',
     labels: [newLabel('prix-promo', { category: 'COMPLÉMENT ALIMENTAIRE', product: 'Chondro-haid Fort ARKOPHARMA', qtyLabel: 'Lot de 3 x 60 gélules*', normalPrice: '31,90', promoPrice: '26,90' })],
   };
 }
@@ -152,6 +166,7 @@ function migrate(p: Project): Project {
   if (q.disclaimer == null) q.disclaimer = DISCLAIMER;
   if (!q.printPaper) q.printPaper = 'A4';
   if (q.printMarginMm == null) q.printMarginMm = 0;
+  if (!q.theme) q.theme = 'promo';
   q.labels = (q.labels || []).map(l => ({ ...l, data: { ...newData(), ...l.data } }));
   return q;
 }
@@ -194,7 +209,110 @@ function footEls(l: Label, o: SeedOpts): El[] {
   return out;
 }
 
+// ── Thème PREMIUM « Apothicaire de luxe » ─────────────────────────────
+function premFrame(d: LabelData, asp: number): El[] {
+  return [
+    { ...B, id: 'frame', kind: 'box', x: 2.5, y: 2, w: 95, h: 96, bg: 'transparent', border: `1px solid ${PREMIUM.gold}`, radius: 3, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
+    { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 6.5, w: 100, size: fitSize(d.category, 0.8, asp, 0.026, 1, 0.013), color: PREMIUM.gold, weight: 600, align: 'center', track: 0.18 },
+    { ...B, id: 'catRule', kind: 'box', x: 41, y: 11, w: 18, h: 0.3, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
+  ];
+}
+function premFoot(l: Label, o: SeedOpts): El[] {
+  const out: El[] = [{ ...B, id: 'bottomRule', kind: 'box', x: 14, y: 85.5, w: 72, h: 0.25, bg: PREMIUM.line, size: 0, color: PREMIUM.line, weight: 400, align: 'left' }];
+  const dt = dateText(l.data);
+  if (!o.small) {
+    if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 0, y: 87.5, w: 100, size: 0.016, color: PREMIUM.muted, weight: 500, align: 'center', italic: true });
+    if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 10, y: 95, w: 80, size: 0.013, color: PREMIUM.muted, weight: 400, align: 'center' });
+  }
+  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 44, y: 90, w: 12, size: 0, color: '#000', weight: 400, align: 'left' });
+  else if (o.editing) {
+    out.push({ ...B, id: 'logoBox', kind: 'box', x: 42, y: 89.5, w: 16, h: 4.5, bg: 'transparent', border: `1px dashed ${PREMIUM.muted}99`, radius: 4, size: 0, color: '#000', weight: 400, align: 'left' });
+    out.push({ ...B, id: 'logoTxt', kind: 'text', text: 'LOGO', x: 42, y: 90.6, w: 16, size: 0.015, color: PREMIUM.muted, weight: 600, align: 'center', track: 0.1 });
+  }
+  return out;
+}
+
+function premiumSeed(l: Label, o: SeedOpts): El[] {
+  const d = l.data, asp = o.aspect || 0.7;
+  const { normal } = priceParts(d.normalPrice, d.promoPrice);
+  const remise = normal > pf(d.promoPrice) ? Math.round(normal - pf(d.promoPrice)) : 0;
+
+  if (l.type === 'prix-promo') {
+    if (o.landscape) {
+      const out: El[] = [
+        { ...B, id: 'frame', kind: 'box', x: 1.5, y: 4, w: 97, h: 92, bg: 'transparent', border: `1px solid ${PREMIUM.gold}`, radius: 3, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
+        { ...B, id: 'divider', kind: 'box', x: 57, y: 14, w: 0.25, h: 72, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
+        { ...B, id: 'cat', kind: 'text', text: d.category, x: 5, y: 16, w: 50, size: fitSize(d.category, 0.5, asp, 0.06, 1, 0.03), color: PREMIUM.gold, weight: 600, align: 'left', track: 0.14 },
+        { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 28, w: 50, size: fitSize(d.product, 0.5, asp, 0.11, 2, 0.05), color: PREMIUM.green, weight: 700, align: 'left', font: SERIF },
+        { ...B, id: 'price', kind: 'text', text: `${d.promoPrice} €`, x: 58, y: 30, w: 40, size: 0.22, color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
+        { ...B, id: 'priceRule', kind: 'box', x: 70, y: 58, w: 16, h: 0.5, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
+      ];
+      if (normal > pf(d.promoPrice)) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 58, y: 19, w: 40, size: 0.07, color: PREMIUM.muted, weight: 400, align: 'center', strike: true });
+      if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 5, y: 64, w: 50, size: fitSize(d.qtyLabel, 0.5, asp, 0.06, 1, 0.035), color: PREMIUM.muted, weight: 400, align: 'left', italic: true });
+      if (remise) out.push({ ...B, id: 'remise', kind: 'text', text: `REMISE IMMÉDIATE  −${remise} €`, x: 58, y: 62, w: 40, size: 0.05, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.06 });
+      if (!o.small && o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 5, y: 90, w: 48, size: 0.042, color: PREMIUM.muted, weight: 400, align: 'left' });
+      if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 88, y: 80, w: 9, size: 0, color: '#000', weight: 400, align: 'left' });
+      else if (o.editing) { out.push({ ...B, id: 'logoBox', kind: 'box', x: 86, y: 80, w: 11, h: 14, bg: 'transparent', border: `1px dashed ${PREMIUM.muted}99`, radius: 4, size: 0, color: '#000', weight: 400, align: 'left' }); out.push({ ...B, id: 'logoTxt', kind: 'text', text: 'LOGO', x: 86, y: 85, w: 11, size: 0.04, color: PREMIUM.muted, weight: 600, align: 'center' }); }
+      return out;
+    }
+    const out: El[] = [
+      ...premFrame(d, asp),
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 17, w: 88, size: fitSize(d.product, 0.78, asp, 0.062, 2, 0.036), color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
+      { ...B, id: 'price', kind: 'text', text: `${d.promoPrice} €`, x: 0, y: 54, w: 100, size: 0.125, color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
+      { ...B, id: 'priceRule', kind: 'box', x: 40, y: 71, w: 20, h: 0.35, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
+    ];
+    if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 40, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.032, 1, 0.02), color: PREMIUM.muted, weight: 400, align: 'center', italic: true });
+    if (normal > pf(d.promoPrice)) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 49, w: 100, size: 0.03, color: PREMIUM.muted, weight: 400, align: 'center', strike: true });
+    if (remise) out.push({ ...B, id: 'remise', kind: 'text', text: `REMISE IMMÉDIATE  −${remise} €`, x: 0, y: 75, w: 100, size: 0.024, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.1 });
+    out.push(...premFoot(l, o));
+    return out;
+  }
+
+  if (l.type === 'bon-reduction') {
+    return [
+      ...premFrame(d, asp),
+      { ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 0, y: 18, w: 100, size: 0.028, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.12 },
+      { ...B, id: 'price', kind: 'text', text: `${d.couponValue} €`, x: 0, y: 28, w: 100, size: 0.14, color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
+      { ...B, id: 'priceRule', kind: 'box', x: 40, y: 50, w: 20, h: 0.35, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 56, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.03), color: PREMIUM.green, weight: 600, align: 'center', font: SERIF },
+      { ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 0, y: 74, w: 100, size: 0.026, color: PREMIUM.muted, weight: 400, align: 'center', italic: true },
+      ...premFoot(l, o),
+    ];
+  }
+
+  if (l.type === 'remise-lot') {
+    const qty = Math.max(2, parseInt(d.lotQty) || 3), free = Math.max(1, parseInt(d.lotFree) || 1), paid = Math.max(1, qty - free);
+    return [
+      ...premFrame(d, asp),
+      { ...B, id: 'ltag', kind: 'text', text: 'LOT ÉCONOMIQUE', x: 0, y: 16, w: 100, size: 0.026, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.12 },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 24, w: 88, size: fitSize(d.product, 0.88, asp, 0.06, 2, 0.035), color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
+      { ...B, id: 'sub', kind: 'text', text: `${paid} acheté${paid > 1 ? 's' : ''} + ${free} offert${free > 1 ? 's' : ''}`, x: 0, y: 43, w: 100, size: 0.03, color: PREMIUM.muted, weight: 400, align: 'center', italic: true },
+      { ...B, id: 'price', kind: 'text', text: `${d.lotPrice} €`, x: 0, y: 56, w: 100, size: 0.11, color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
+      { ...B, id: 'priceRule', kind: 'box', x: 41, y: 71, w: 18, h: 0.35, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
+      { ...B, id: 'unit', kind: 'text', text: 'le lot', x: 0, y: 73, w: 100, size: 0.022, color: PREMIUM.muted, weight: 400, align: 'center', italic: true },
+      ...premFoot(l, o),
+    ];
+  }
+
+  // multi-achat
+  const cols = [{ q: d.t1q, p: d.t1p }, { q: d.t2q, p: d.t2p }, { q: d.t3q, p: d.t3p }];
+  const out: El[] = [
+    ...premFrame(d, asp),
+    { ...B, id: 'mtitle', kind: 'text', text: 'OFFRE MULTI-ACHAT', x: 0, y: 16, w: 100, size: 0.026, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.12 },
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 24, w: 88, size: fitSize(d.product, 0.88, asp, 0.055, 2, 0.035), color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
+  ];
+  cols.forEach((c, i) => {
+    const cx = 9 + i * 28;
+    out.push({ ...B, id: `qt${i}`, kind: 'text', text: `${c.q} pce${parseInt(c.q) > 1 ? 's' : ''}`, x: cx, y: 46, w: 24, size: 0.028, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.04 });
+    out.push({ ...B, id: `p${i}`, kind: 'text', text: `${c.p} €`, x: cx, y: 53, w: 24, size: 0.07, color: PREMIUM.green, weight: 700, align: 'center', font: SERIF });
+    if (i < 2) out.push({ ...B, id: `sep${i}`, kind: 'box', x: cx + 25, y: 47, w: 0.25, h: 16, bg: PREMIUM.line, size: 0, color: PREMIUM.line, weight: 400, align: 'left' });
+  });
+  out.push(...premFoot(l, o));
+  return out;
+}
+
 function seedEls(l: Label, o: SeedOpts): El[] {
+  if (o.theme === 'premium') return premiumSeed(l, o);
   const a = l.accent, d = l.data;
   const asp = o.aspect || 0.7;
   const circleBg = `radial-gradient(circle at 38% 30%, #ffffff3a, ${a} 46%, ${DA.red2})`;
@@ -305,7 +423,10 @@ function resolveEls(l: Label, o: SeedOpts): El[] {
   return [...bound, ...l.extra];
 }
 function isBound(l: Label, id: string): boolean {
-  return seedEls(l, FULL).some(e => e.id === id) || seedEls(l, { ...FULL, landscape: true }).some(e => e.id === id);
+  for (const theme of ['promo', 'premium']) for (const landscape of [false, true]) {
+    if (seedEls(l, { ...FULL, landscape, theme }).some(e => e.id === id)) return true;
+  }
+  return false;
 }
 
 function renderEl(e: El, H: number): CSSProperties {
@@ -317,7 +438,8 @@ function renderEl(e: El, H: number): CSSProperties {
     width: e.w != null ? `${e.w}%` : undefined,
     whiteSpace: e.w != null ? 'normal' : 'nowrap',
     textDecoration: e.strike ? 'line-through' : undefined,
-    letterSpacing: e.weight >= 800 ? '0.01em' : undefined,
+    letterSpacing: e.track != null ? `${e.track}em` : (e.weight >= 800 ? '0.01em' : undefined),
+    fontStyle: e.italic ? 'italic' : undefined,
   };
   if (e.kind === 'box') {
     if (e.shape === 'circle') { st.width = `${e.w}%`; st.aspectRatio = '1 / 1'; st.height = 'auto'; st.borderRadius = '50%'; st.background = e.bg; }
@@ -348,15 +470,18 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
   onDelEl: (id: string) => void;
 }) {
   const els = resolveEls(label, opts).filter(e => !e.hidden);
+  const premium = opts.theme === 'premium';
+  const bg = premium ? PREMIUM.bg : label.bg;
+  const selColor = premium ? PREMIUM.gold : label.accent;
   return (
     <div data-labelbox onClick={(ev) => { ev.stopPropagation(); onSelectLabel(); }}
-      style={{ position: 'relative', width: W, height: H, background: label.bg, border: editing ? `1px solid ${selectedLabel ? label.accent : 'rgba(0,0,0,0.08)'}` : 'none', borderRadius: editing ? 6 : 0, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${label.accent}44` : 'none', flexShrink: 0, boxSizing: 'border-box' }}>
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.7, pointerEvents: 'none' }} />
+      style={{ position: 'relative', width: W, height: H, background: bg, border: editing ? `1px solid ${selectedLabel ? selColor : 'rgba(0,0,0,0.08)'}` : 'none', borderRadius: editing ? 6 : 0, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${selColor}44` : 'none', flexShrink: 0, boxSizing: 'border-box' }}>
+      {!premium && <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.7, pointerEvents: 'none' }} />}
       {els.map(e => {
         const sel = editing && selectedEl === e.id;
         return (
           <div key={e.id} onPointerDown={(ev) => { if (editing) { ev.stopPropagation(); onSelectEl(e.id); onDragStart(ev, label.id, e.id, e); } }}
-            style={{ ...renderEl(e, H), outline: sel ? `1.5px solid ${label.accent}` : 'none', outlineOffset: 2, cursor: editing ? 'move' : 'default', userSelect: 'none', touchAction: 'none' }}>
+            style={{ ...renderEl(e, H), outline: sel ? `1.5px solid ${selColor}` : 'none', outlineOffset: 2, cursor: editing ? 'move' : 'default', userSelect: 'none', touchAction: 'none' }}>
             {e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} /> : (e.kind === 'box' ? null : e.text)}
             {sel && e.removable && <button onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onDelEl(e.id); }} style={{ position: 'absolute', top: -10, right: -10, width: 18, height: 18, borderRadius: '50%', background: '#ef4444', color: '#fff', border: '2px solid #fff', fontSize: 11, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>}
           </div>
@@ -403,7 +528,7 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
   delEl: (id: string) => void; forPrint?: boolean;
 }) {
   const L = layout(project);
-  const opts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: editing && !forPrint, small: L.small, aspect: project.labelWmm / project.labelHmm };
+  const opts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: editing && !forPrint, small: L.small, aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo' };
   return (
     <div style={{ width: L.PW, height: L.PH, background: '#fff', transform: forPrint ? undefined : `scale(${scale})`, transformOrigin: 'top left', boxShadow: forPrint ? 'none' : '0 10px 40px rgba(0,0,0,0.18)', position: 'relative', flexShrink: 0 }}
       onClick={() => { if (editing) { setSelLabel(null); setSelEl(null); } }}>
@@ -443,7 +568,7 @@ function PrintSheet({ project, screen }: { project: Project; screen?: boolean })
   const opts: SeedOpts = {
     landscape: lw > lh * 1.5, logo: project.logo, disclaimer: project.disclaimer,
     editing: false, small: Math.min(project.labelWmm, project.labelHmm) < 80,
-    aspect: project.labelWmm / project.labelHmm,
+    aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo',
   };
   const g = plan.gapMm * MM, m = plan.margin * MM;
   return (
@@ -744,9 +869,11 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     const flip = (p.labelWmm > p.labelHmm * 1.5) !== (w > h * 1.5);
     return { ...p, labelWmm: w, labelHmm: h, labels: flip ? p.labels.map(l => ({ ...l, overrides: {} })) : p.labels };
   });
+  // changement de thème : on repart des positions par défaut (compositions différentes)
+  const setTheme = (t: string) => setProject(p => p.theme === t ? p : ({ ...p, theme: t, labels: p.labels.map(l => ({ ...l, overrides: {} })) }));
 
   const current = project.labels.find(l => l.id === selLabel) || null;
-  const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true, small: L.small, aspect: project.labelWmm / project.labelHmm };
+  const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true, small: L.small, aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo' };
   const currentEl: El | null = current && selEl ? resolveEls(current, seedOpts).find(e => e.id === selEl) || null : null;
   const overflow = project.labels.length > L.capacity;
 
@@ -809,6 +936,9 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={undo} disabled={!canUndo} title="Annuler (Ctrl+Z)" style={{ padding: '5px 9px', background: '#1e293b', color: canUndo ? '#cbd5e1' : '#475569', border: '1px solid #334155', borderRadius: 6, cursor: canUndo ? 'pointer' : 'default', fontSize: 13 }}>↶</button>
               <button onClick={redo} disabled={!canRedo} title="Refaire (Ctrl+Y)" style={{ padding: '5px 9px', background: '#1e293b', color: canRedo ? '#cbd5e1' : '#475569', border: '1px solid #334155', borderRadius: 6, cursor: canRedo ? 'pointer' : 'default', fontSize: 13 }}>↷</button>
+            </div>
+            <div style={{ display: 'flex', gap: 4, border: '1px solid #334155', borderRadius: 7, padding: 2 }}>
+              {[{ id: 'promo', t: '🏷️ Promo' }, { id: 'premium', t: '✦ Premium' }].map(th => { const on = (project.theme || 'promo') === th.id; return <button key={th.id} onClick={() => setTheme(th.id)} title="Thème graphique" style={{ padding: '4px 10px', background: on ? (th.id === 'premium' ? '#B08D4F' : '#dc2626') : 'transparent', color: on ? '#fff' : '#94a3b8', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{th.t}</button>; })}
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button onClick={() => setEditing(e => !e)} style={{ padding: '7px 12px', background: editing ? '#16a34a22' : '#1e293b', color: editing ? '#4ade80' : '#94a3b8', border: `1px solid ${editing ? '#16a34a' : '#334155'}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{editing ? '✓ Édition' : 'Aperçu'}</button>
