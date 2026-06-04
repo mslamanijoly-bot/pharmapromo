@@ -524,39 +524,155 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
 //  IMPORT CSV / EXCEL
 // ──────────────────────────────────────────────────────────────────────
 
+type ImpField = { key: keyof LabelData; label: string; kw: RegExp };
+const F_CAT: ImpField = { key: 'category', label: 'Catégorie', kw: /cat|rayon|univers|famille|gamme/i };
+const F_PROD: ImpField = { key: 'product', label: 'Produit', kw: /produit|nom|libell|d[eé]sign|article|d[eé]nom/i };
+const F_QTY: ImpField = { key: 'qtyLabel', label: 'Descriptif', kw: /descript|quantit|format|conditionn|contenance|lot|g[eé]lul|capsul|comprim/i };
+const IMPORT_FIELDS: Record<PromoType, ImpField[]> = {
+  'prix-promo': [F_CAT, F_PROD,
+    { key: 'normalPrice', label: 'Prix normal €', kw: /normal|barr|public|ancien|avant|initial/i },
+    { key: 'promoPrice', label: 'Prix promo €', kw: /promo|nouveau|apr[eè]s|remis|r[eé]duit|net/i }, F_QTY],
+  'bon-reduction': [F_CAT, F_PROD,
+    { key: 'couponValue', label: 'Valeur bon €', kw: /valeur|bon|montant/i },
+    { key: 'couponExpiry', label: 'Validité', kw: /validit|date|jusqu|expir|fin/i }],
+  'remise-lot': [F_CAT, F_PROD,
+    { key: 'lotQty', label: 'Qté totale', kw: /qt|quantit|total|nombre/i },
+    { key: 'lotFree', label: 'Offert(s)', kw: /offert|gratuit/i },
+    { key: 'lotPrice', label: 'Prix du lot €', kw: /prix|lot|tarif|montant/i }, F_QTY],
+  'multi-achat': [F_CAT, F_PROD,
+    { key: 't1q', label: 'P1 qté', kw: /q.?1|qt[eé]?\s*1/i }, { key: 't1p', label: 'P1 prix', kw: /p.?1|prix\s*1/i },
+    { key: 't2q', label: 'P2 qté', kw: /q.?2|qt[eé]?\s*2/i }, { key: 't2p', label: 'P2 prix', kw: /p.?2|prix\s*2/i },
+    { key: 't3q', label: 'P3 qté', kw: /q.?3|qt[eé]?\s*3/i }, { key: 't3p', label: 'P3 prix', kw: /p.?3|prix\s*3/i }],
+};
+
+function cellToStr(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'number') return String(v).replace('.', ',');
+  if (v instanceof Date) return v.toLocaleDateString('fr-FR');
+  return String(v).trim();
+}
+async function readXlsx(file: File): Promise<string[][]> {
+  const mod = await import('read-excel-file/browser');
+  const rows = (await mod.default(file)) as unknown as unknown[][];
+  return rows.map(r => r.map(cellToStr)).filter(r => r.some(c => c.length));
+}
+async function readTextSmart(file: File): Promise<string> {
+  const buf = await file.arrayBuffer();
+  let text = new TextDecoder('utf-8').decode(buf);
+  // mojibake typique d'un CSV Windows-1252 lu en UTF-8 → on redécode
+  if (/Ã[-ÿ]|Â[-ÿ]|�/.test(text)) {
+    try { text = new TextDecoder('windows-1252').decode(buf); } catch { /* garde UTF-8 */ }
+  }
+  return text;
+}
+function detectHeader(rows: string[][]): boolean {
+  const r = rows[0] || [];
+  return r.some(c => /produit|cat[eé]gorie|nom|prix|valeur|qt|descript|marque|libell|rayon/i.test(c));
+}
+function autoMap(fields: ImpField[], header: string[], hasHeader: boolean): Record<string, number> {
+  const used = new Set<number>(); const map: Record<string, number> = {};
+  fields.forEach((f, idx) => {
+    let col = -1;
+    if (hasHeader) col = header.findIndex((h, i) => !used.has(i) && f.kw.test(h));
+    if (col < 0) col = (idx < header.length && !used.has(idx)) ? idx : -1;
+    if (col >= 0) used.add(col);
+    map[f.key] = col;
+  });
+  return map;
+}
+
 function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (labels: Label[]) => void }) {
-  const [text, setText] = useState('');
   const [type, setType] = useState<PromoType>('prix-promo');
-  const example = 'Catégorie;Produit;Prix normal;Prix promo;Descriptif\nCOMPLÉMENT ALIMENTAIRE;Chondro-haid Fort ARKOPHARMA;31,90;26,90;Lot de 3 x 60 gélules*\nPRÉPARATION SOLAIRE;Oenobiol Perfect Bronze;32,90;29,90;2 x 30 capsules*';
+  const [rows, setRows] = useState<string[][]>([]);
+  const [hasHeader, setHasHeader] = useState(true);
+  const [mapping, setMapping] = useState<Record<string, number>>({});
+  const [fileName, setFileName] = useState('');
+  const [error, setError] = useState('');
+  const fields = IMPORT_FIELDS[type];
+  const ncols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+
+  // (re)calcule le mappage auto à chaque changement de données / type / en-tête
+  useEffect(() => {
+    if (rows.length) setMapping(autoMap(IMPORT_FIELDS[type], rows[0] || [], hasHeader));
+  }, [rows, type, hasHeader]);
+
+  const loadRows = (rws: string[][]) => { setRows(rws); setHasHeader(detectHeader(rws)); setError(rws.length ? '' : 'Aucune donnée détectée.'); };
+  const onText = (txt: string) => loadRows(parseTable(txt));
+  const onFile = async (f: File) => {
+    setFileName(f.name); setError('');
+    try { loadRows(/\.xlsx?$/i.test(f.name) ? await readXlsx(f) : parseTable(await readTextSmart(f))); }
+    catch (e) { setError('Lecture impossible : ' + (e instanceof Error ? e.message : String(e))); }
+  };
+
+  const colLabel = (i: number) => (hasHeader && rows[0]?.[i]?.trim()) ? rows[0][i] : `Colonne ${i + 1}`;
+  const body = hasHeader ? rows.slice(1) : rows;
   const build = () => {
-    const rows = parseTable(text.trim() || example);
-    if (!rows.length) return;
-    const hasHeader = rows[0].some(c => /produit|catégorie|nom|prix|descriptif/i.test(c));
-    const body = hasHeader ? rows.slice(1) : rows;
-    const labels = body.filter(r => r[1] || r[0]).map(r => {
-      const d: Partial<LabelData> = { category: r[0] || 'PROMOTION', product: r[1] || r[0] };
-      if (type === 'prix-promo') { d.normalPrice = r[2] || ''; d.promoPrice = r[3] || ''; d.qtyLabel = r[4] || ''; }
-      else if (type === 'remise-lot') { d.lotQty = r[2] || '3'; d.lotFree = r[3] || '1'; d.lotPrice = r[4] || ''; d.qtyLabel = r[5] || ''; }
-      else if (type === 'bon-reduction') { d.couponValue = r[2] || ''; d.couponExpiry = r[3] || ''; }
-      else { d.t1q = r[2] || '1'; d.t1p = r[3] || ''; d.t2q = r[4] || '2'; d.t2p = r[5] || ''; d.t3q = r[6] || '3'; d.t3p = r[7] || ''; }
+    const labels = body.filter(r => (mapping.product >= 0 ? r[mapping.product] : r[0] || '').trim()).map(r => {
+      const d: Partial<LabelData> = {};
+      fields.forEach(f => { const c = mapping[f.key]; if (c >= 0 && r[c] != null && r[c] !== '') (d as Record<string, string>)[f.key] = r[c]; });
+      if (!d.product) d.product = r[0] || 'Produit';
+      if (!d.category) d.category = 'PROMOTION';
       return newLabel(type, d);
     });
-    onImport(labels);
+    if (labels.length) onImport(labels);
   };
-  const onFile = (f: File) => { const r = new FileReader(); r.onload = () => setText(r.result as string); r.readAsText(f); };
+
+  const example = 'Catégorie;Produit;Prix normal;Prix promo;Descriptif\nCOMPLÉMENT ALIMENTAIRE;Chondro-haid Fort ARKOPHARMA;31,90;26,90;Lot de 3 x 60 gélules*';
+
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SYS }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 580, maxWidth: '92vw', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 24, color: '#e2e8f0' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SYS, padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 640, maxWidth: '95vw', maxHeight: '92vh', overflow: 'auto', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 22, color: '#e2e8f0' }}>
         <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Importer des produits</div>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>Collez depuis Excel (Ctrl+V) ou importez un <strong>.csv</strong>. Séparateur détecté automatiquement.</div>
-        <Field label="Type d'étiquette à générer"><select value={type} onChange={e => setType(e.target.value as PromoType)} style={{ ...inp, cursor: 'pointer' }}>{TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></Field>
-        <div style={{ fontSize: 10, color: '#64748b', marginBottom: 6, fontFamily: 'monospace' }}>Colonnes : {type === 'prix-promo' ? 'Catégorie ; Produit ; Prix normal ; Prix promo ; Descriptif' : type === 'remise-lot' ? 'Catégorie ; Produit ; Qté ; Offerts ; Prix lot ; Descriptif' : type === 'bon-reduction' ? 'Catégorie ; Produit ; Valeur ; Validité' : 'Catégorie ; Produit ; Q1 ; P1 ; Q2 ; P2 ; Q3 ; P3'}</div>
-        <textarea value={text} onChange={e => setText(e.target.value)} placeholder={example} rows={7} style={{ ...inp, resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5 }} />
-        <div style={{ display: 'flex', gap: 10, marginTop: 16, alignItems: 'center' }}>
-          <label style={{ ...inp, width: 'auto', cursor: 'pointer', padding: '8px 14px' }}>📁 Fichier .csv<input type="file" accept=".csv,text/csv,text/plain" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && onFile(e.target.files[0])} /></label>
-          <div style={{ flex: 1 }} />
+        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>Fichier <strong>.xlsx</strong> ou <strong>.csv</strong>, ou collez depuis Excel. Accents et colonnes gérés automatiquement — vous pouvez corriger le mappage.</div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+          <div style={{ flex: '1 1 200px' }}><label style={lbl}>Type d&apos;étiquette</label><select value={type} onChange={e => setType(e.target.value as PromoType)} style={{ ...inp, cursor: 'pointer' }}>{TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
+          <label style={{ ...inp, width: 'auto', cursor: 'pointer', padding: '8px 14px', textAlign: 'center' }}>📁 Choisir un fichier (.xlsx / .csv)
+            <input type="file" accept=".xlsx,.xls,.csv,text/csv,text/plain" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && onFile(e.target.files[0])} />
+          </label>
+        </div>
+        {fileName && <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>📄 {fileName} — {body.length} ligne(s) de données</div>}
+
+        <Field label="…ou coller depuis Excel (Ctrl+V)"><textarea placeholder={example} rows={3} onChange={e => onText(e.target.value)} style={{ ...inp, resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5 }} /></Field>
+
+        {error && <Warn>{error}</Warn>}
+
+        {rows.length > 0 && <>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#cbd5e1', marginBottom: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={hasHeader} onChange={e => setHasHeader(e.target.checked)} /> La 1ʳᵉ ligne contient les en-têtes de colonnes
+          </label>
+
+          <SectionTitle>Correspondance des colonnes</SectionTitle>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+            {fields.map(f => (
+              <div key={f.key}>
+                <label style={lbl}>{f.label}</label>
+                <select value={mapping[f.key] ?? -1} onChange={e => setMapping(m => ({ ...m, [f.key]: parseInt(e.target.value) }))} style={{ ...inp, cursor: 'pointer' }}>
+                  <option value={-1}>(aucune)</option>
+                  {Array.from({ length: ncols }).map((_, i) => <option key={i} value={i}>{colLabel(i)}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+
+          <SectionTitle>Aperçu</SectionTitle>
+          <div style={{ overflow: 'auto', border: '1px solid #1e293b', borderRadius: 6, marginBottom: 14 }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: 11, width: '100%' }}>
+              <tbody>
+                {body.slice(0, 4).map((r, ri) => (
+                  <tr key={ri}>{Array.from({ length: ncols }).map((_, ci) => {
+                    const mapped = fields.find(f => mapping[f.key] === ci);
+                    return <td key={ci} style={{ border: '1px solid #1e293b', padding: '4px 7px', whiteSpace: 'nowrap', color: mapped ? '#e2e8f0' : '#64748b', background: mapped ? '#16a34a18' : 'transparent', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r[ci] || ''}</td>;
+                  })}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '9px 16px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Annuler</button>
-          <button onClick={build} style={{ padding: '9px 20px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 800 }}>Générer</button>
+          <button onClick={build} disabled={!body.length} style={{ padding: '9px 20px', background: body.length ? '#16a34a' : '#334155', color: '#fff', border: 'none', borderRadius: 7, cursor: body.length ? 'pointer' : 'default', fontSize: 13, fontWeight: 800 }}>Générer {body.length || ''} étiquette{body.length > 1 ? 's' : ''}</button>
         </div>
       </div>
     </div>

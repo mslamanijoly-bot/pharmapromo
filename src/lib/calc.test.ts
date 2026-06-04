@@ -74,6 +74,16 @@ describe('parseTable', () => {
     const rows = parseTable('"a","b"\n\n"c","d"');
     expect(rows).toEqual([['a', 'b'], ['c', 'd']]);
   });
+  it('respecte les virgules et retours-ligne dans les guillemets', () => {
+    const rows = parseTable('Nom,Prix\n"Doliprane, fort",5,90');
+    expect(rows[1][0]).toBe('Doliprane, fort');
+  });
+  it('gère les guillemets échappés', () => {
+    expect(parseTable('"a ""b"" c";d')[0]).toEqual(['a "b" c', 'd']);
+  });
+  it('retire le BOM', () => {
+    expect(parseTable('﻿a;b')[0]).toEqual(['a', 'b']);
+  });
 });
 
 describe('chunk', () => {

@@ -38,12 +38,30 @@ export function paginate(lwMm: number, lhMm: number, paperWmm: number, paperHmm:
   return { cols, rows, perPage: cols * rows };
 }
 
-/** Découpe un texte CSV/Excel collé en lignes/colonnes (séparateur auto). */
+/**
+ * Parseur CSV/TSV robuste : détecte le séparateur (tab / ; / ,),
+ * respecte les guillemets (séparateurs et retours-ligne échappés, "" → ").
+ */
 export function parseTable(text: string): string[][] {
-  const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim().length);
-  const sample = lines[0] || '';
-  const sep = sample.includes('\t') ? '\t' : (sample.includes(';') ? ';' : ',');
-  return lines.map(l => l.split(sep).map(c => c.trim().replace(/^"|"$/g, '')));
+  const t = (text || '').replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!t.trim()) return [];
+  const first = t.split('\n')[0] || '';
+  const sep = first.includes('\t') ? '\t'
+    : (first.split(';').length > first.split(',').length ? ';' : ',');
+  const rows: string[][] = [];
+  let row: string[] = [], field = '', inQ = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (inQ) {
+      if (c === '"') { if (t[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else if (c === '"') inQ = true;
+    else if (c === sep) { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else field += c;
+  }
+  row.push(field); rows.push(row);
+  return rows.map(r => r.map(c => c.trim())).filter(r => r.some(c => c.length));
 }
 
 /** Découpe un tableau en sous-tableaux de taille n. */
