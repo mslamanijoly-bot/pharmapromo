@@ -359,7 +359,7 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
   const els = resolveEls(label, opts).filter(e => !e.hidden);
   return (
     <div data-labelbox onClick={(ev) => { ev.stopPropagation(); onSelectLabel(); }}
-      style={{ position: 'relative', width: W, height: H, background: label.bg, border: `1px solid ${selectedLabel && editing ? label.accent : 'rgba(0,0,0,0.08)'}`, borderRadius: 6, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${label.accent}44` : 'none', flexShrink: 0 }}>
+      style={{ position: 'relative', width: W, height: H, background: label.bg, border: editing ? `1px solid ${selectedLabel ? label.accent : 'rgba(0,0,0,0.08)'}` : 'none', borderRadius: editing ? 6 : 0, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${label.accent}44` : 'none', flexShrink: 0, boxSizing: 'border-box' }}>
       <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.7, pointerEvents: 'none' }} />
       {els.map(e => {
         const sel = editing && selectedEl === e.id;
@@ -425,6 +425,33 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
         ))}
         {!forPrint && <button onClick={(e) => { e.stopPropagation(); onAdd(); }} style={{ width: L.lw, height: Math.min(L.lh, 220), border: '2px dashed #cbd5e1', borderRadius: 8, background: '#f8fafc', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: SYS, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}><span style={{ fontSize: 22 }}>＋</span>Ajouter</button>}
       </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+//  FEUILLE D'IMPRESSION (toujours A4, étiquettes à taille réelle, tuilées)
+// ──────────────────────────────────────────────────────────────────────
+
+function PrintSheet({ project }: { project: Project }) {
+  const lw = project.labelWmm * MM, lh = project.labelHmm * MM;
+  const A4W = 210 * MM;
+  const opts: SeedOpts = {
+    landscape: lw > lh * 1.5, logo: project.logo, disclaimer: project.disclaimer,
+    editing: false, small: Math.min(project.labelWmm, project.labelHmm) < 80,
+    aspect: project.labelWmm / project.labelHmm,
+  };
+  // tuilage si plusieurs étiquettes ou si l'étiquette est plus petite que l'A4
+  const tiling = project.labels.length > 1 || lw < A4W - 4 || lh < 297 * MM - 4;
+  const g = GAP_MM * MM;
+  const labels = project.labels.length ? project.labels : [newLabel()];
+  return (
+    <div style={{ width: A4W, fontSize: 0, lineHeight: 0 }}>
+      {labels.map(l => (
+        <div key={l.id} style={{ display: 'inline-block', verticalAlign: 'top', width: lw, height: lh, marginRight: tiling ? g : 0, marginBottom: tiling ? g : 0, breakInside: 'avoid', pageBreakInside: 'avoid', outline: tiling ? '0.4px dashed rgba(0,0,0,0.35)' : 'none' }}>
+          <LabelView label={l} W={lw} H={lh} editing={false} opts={opts} selectedLabel={false} selectedEl={null} onSelectLabel={() => {}} onSelectEl={() => {}} onDragStart={() => {}} onDelEl={() => {}} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -633,7 +660,8 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
   }, [updateLabel]);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: SYS, overflow: 'hidden' }}>
+    <>
+    <div id="app" style={{ display: 'flex', height: '100vh', fontFamily: SYS, overflow: 'hidden' }}>
       <div id="studio" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <main style={{ flex: 1, background: '#0b1220', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           <div style={{ background: '#0f172a', borderBottom: '1px solid #1e293b', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
@@ -725,14 +753,16 @@ function Studio({ project, setProject, onBack, saving, mode }: { project: Projec
         </button>
       )}
 
-      <div id="print-root" style={{ display: 'none' }}>
-        <Planche project={project} scale={1} editing={false} selLabel={null} selEl={null} setSelLabel={() => {}} setSelEl={() => {}} onAdd={() => {}} dragStart={() => {}} delEl={() => {}} forPrint />
-      </div>
-
       {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={(labels) => { setProject(p => ({ ...p, labels: [...p.labels, ...labels] })); setShowImport(false); }} />}
 
-      <style>{`@media print { @page { size: ${L.pageWmm}mm ${L.pageHmm}mm; margin: 0; } #studio { display: none !important; } #print-root { display: block !important; } } input[type=range] { accent-color: #16a34a; }`}</style>
+      <style>{`input[type=range] { accent-color: #16a34a; }`}</style>
     </div>
+
+    <div id="print-root" style={{ display: 'none' }}>
+      <PrintSheet project={project} />
+    </div>
+    <style>{`@media print { @page { size: A4; margin: 0; } html, body { background: #fff !important; } #app { display: none !important; } #print-root { display: block !important; } }`}</style>
+    </>
   );
 }
 
