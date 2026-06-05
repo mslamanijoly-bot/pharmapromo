@@ -776,6 +776,50 @@ const IMPORT_FIELDS: Record<PromoType, ImpField[]> = {
     { key: 't3q', label: 'P3 qté', kw: /q.?3|qt[eé]?\s*3/i }, { key: 't3p', label: 'P3 prix', kw: /p.?3|prix\s*3/i }],
 };
 
+// Modèles « parfaits » par type : en-têtes reconnus automatiquement + exemples.
+const TEMPLATES: Record<PromoType, { headers: string[]; rows: string[][] }> = {
+  'prix-promo': {
+    headers: ['Catégorie', 'Produit', 'Prix normal €', 'Prix promo €', 'Descriptif'],
+    rows: [
+      ['COMPLÉMENT ALIMENTAIRE', 'Chondro-Aid Fort ARKOPHARMA', '31,90', '26,90', 'Lot de 3 x 60 gélules'],
+      ['SOIN VISAGE', 'Crème hydratante AVÈNE', '19,90', '14,90', 'Tube 40 ml'],
+      ['HYGIÈNE BUCCO-DENTAIRE', 'Bain de bouche ELUDRIL', '8,50', '5,90', 'Flacon 500 ml'],
+    ],
+  },
+  'bon-reduction': {
+    headers: ['Catégorie', 'Produit', 'Valeur bon €', 'Validité'],
+    rows: [
+      ['HYGIÈNE', 'Dentifrice SENSODYNE', '2,00', '31/12/2026'],
+      ['BÉBÉ', 'Lingettes MUSTELA', '1,50', '30/09/2026'],
+    ],
+  },
+  'remise-lot': {
+    headers: ['Catégorie', 'Produit', 'Qté totale', 'Offert(s)', 'Prix du lot €', 'Descriptif'],
+    rows: [
+      ['COMPLÉMENT ALIMENTAIRE', 'Magnésium B6', '3', '1', '19,98', 'Lot de 3 boîtes'],
+      ['SOLAIRE', 'Spray solaire SPF50+', '2', '1', '24,90', 'Lot de 2 sprays'],
+    ],
+  },
+  'multi-achat': {
+    headers: ['Catégorie', 'Produit', 'Qté 1', 'Prix 1', 'Qté 2', 'Prix 2', 'Qté 3', 'Prix 3'],
+    rows: [
+      ['SOLAIRE', 'Spray solaire SPF50', '1', '12,90', '2', '22,90', '3', '29,90'],
+    ],
+  },
+};
+
+// Génère et télécharge le modèle CSV (ouvrable dans Excel) pour un type donné.
+function downloadTemplate(type: PromoType) {
+  const t = TEMPLATES[type];
+  const esc = (v: string) => /[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const csv = '﻿' + [t.headers, ...t.rows].map(r => r.map(esc).join(';')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `modele-pharmapromo-${type}.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
 function cellToStr(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'number') return String(v).replace('.', ',');
@@ -858,10 +902,12 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
           <div style={{ flex: '1 1 200px' }}><label style={lbl}>Type d&apos;étiquette</label><select value={type} onChange={e => setType(e.target.value as PromoType)} style={{ ...inp, cursor: 'pointer' }}>{TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
+          <button onClick={() => downloadTemplate(type)} title="Télécharger le modèle prérempli pour ce type" style={{ ...inp, width: 'auto', cursor: 'pointer', padding: '8px 14px', textAlign: 'center', fontWeight: 700, color: '#86efac', borderColor: '#166534' }}>⬇ Modèle Excel ({TYPES.find(t => t.id === type)?.label})</button>
           <label style={{ ...inp, width: 'auto', cursor: 'pointer', padding: '8px 14px', textAlign: 'center' }}>📁 Choisir un fichier (.xlsx / .csv)
             <input type="file" accept=".xlsx,.xls,.csv,text/csv,text/plain" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && onFile(e.target.files[0])} />
           </label>
         </div>
+        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 12, lineHeight: 1.5 }}>👉 <strong style={{ color: '#86efac' }}>Téléchargez le modèle</strong>, remplissez vos lignes (gardez la 1ʳᵉ ligne d&apos;en-têtes), enregistrez, puis réimportez-le ici. Les colonnes se mappent toutes seules.</div>
         {fileName && <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>📄 {fileName} — {body.length} ligne(s) de données</div>}
 
         <Field label="…ou coller depuis Excel (Ctrl+V)"><textarea placeholder={example} rows={3} onChange={e => onText(e.target.value)} style={{ ...inp, resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5 }} /></Field>
