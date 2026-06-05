@@ -1112,6 +1112,17 @@ function PrintPreviewModal({ project, setProject, onClose }: { project: Project;
   const pageWpx = plan.paper.w * MM, pageHpx = plan.paper.h * MM;
   const s = Math.min(0.62, 470 / pageWpx);
   const totalH = plan.pages.length * pageHpx + (plan.pages.length - 1) * 14;
+  // Export PDF : on passe par l'impression navigateur (PDF vectoriel, net) en
+  // pré-remplissant un nom de fichier propre. Respecte le papier + la marge choisis.
+  const exportPDF = () => {
+    const clean = (txt: string) => (txt || '').replace(/[^\p{L}\p{N}\-_ ]/gu, '').trim().replace(/\s+/g, '-');
+    const name = ['Promo', clean(project.pharmacy) || 'planche', clean(project.plan), new Date().toISOString().slice(0, 10)].filter(Boolean).join('_');
+    const prev = document.title;
+    const restore = () => { document.title = prev; window.removeEventListener('afterprint', restore); };
+    window.addEventListener('afterprint', restore);
+    document.title = name;
+    window.print();
+  };
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.75)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SYS, padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ width: 620, maxWidth: '95vw', maxHeight: '92vh', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 20, color: '#e2e8f0', display: 'flex', flexDirection: 'column' }}>
@@ -1141,9 +1152,11 @@ function PrintPreviewModal({ project, setProject, onClose }: { project: Project;
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 14, justifyContent: 'flex-end' }}>
+        <div style={{ fontSize: 11, color: '#64748b', marginTop: 12 }}>💡 Pour le PDF à envoyer par mail : cliquez <strong style={{ color: '#cbd5e1' }}>Exporter en PDF</strong>, puis choisissez <strong style={{ color: '#cbd5e1' }}>« Enregistrer au format PDF »</strong> comme imprimante. La marge choisie est conservée.</div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '9px 16px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Fermer</button>
-          <button onClick={() => window.print()} style={{ padding: '9px 20px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 800 }}>🖨 Imprimer maintenant</button>
+          <button onClick={exportPDF} style={{ padding: '9px 20px', background: '#0e7a4d', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 800 }}>⤓ Exporter en PDF</button>
+          <button onClick={() => window.print()} style={{ padding: '9px 20px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 800 }}>🖨 Imprimer</button>
         </div>
       </div>
     </div>
