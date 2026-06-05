@@ -566,7 +566,7 @@ function EditableText({ initial, onCommit, onCancel }: { initial: string; onComm
 
 interface DragState { labelId: string; elId: string; offX: number; offY: number; box: HTMLElement; }
 
-function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSelectLabel, onSelectEl, onDragStart, onDelEl, onAddText, editId, onStartEdit, onCommitText, onEndEdit }: {
+function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSelectLabel, onSelectEl, onDragStart, onDelEl, onAddText, editId, onStartEdit, onCommitText, onEndEdit, onDeleteLabel }: {
   label: Label; W: number; H: number; editing: boolean; opts: SeedOpts;
   selectedLabel: boolean; selectedEl: string | null;
   onSelectLabel: () => void; onSelectEl: (id: string) => void;
@@ -575,6 +575,7 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
   onAddText?: (x: number, y: number) => void;
   editId?: string | null;
   onStartEdit?: (id: string) => void; onCommitText?: (id: string, t: string) => void; onEndEdit?: () => void;
+  onDeleteLabel?: () => void;
 }) {
   const els = resolveEls(label, opts).filter(e => !e.hidden);
   const bg = label.bg;
@@ -600,6 +601,7 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
           </div>
         );
       })}
+      {editing && selectedLabel && onDeleteLabel && <button title="Supprimer l'étiquette (ou touche Suppr)" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onDeleteLabel(); }} style={{ position: 'absolute', top: 4, right: 4, width: 24, height: 24, borderRadius: '50%', background: '#ef4444', color: '#fff', border: '2px solid #fff', fontSize: 13, cursor: 'pointer', lineHeight: 1, padding: 0, zIndex: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 5px rgba(0,0,0,0.35)' }}>🗑</button>}
     </div>
   );
 }
@@ -645,13 +647,13 @@ function layout(p: Project) {
   return { fmt, lw, lh, m, gap, header, PW, PH, pageWmm, pageHmm, usableW, perRow, capacity, landscape, small, mixed };
 }
 
-function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSelEl, onAdd, dragStart, delEl, addTextAt, editId, startEdit, commitText, endEdit, forPrint }: {
+function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSelEl, onAdd, dragStart, delEl, addTextAt, editId, startEdit, commitText, endEdit, deleteLabelId, forPrint }: {
   project: Project; scale: number; editing: boolean;
   selLabel: string | null; selEl: string | null;
   setSelLabel: (id: string | null) => void; setSelEl: (id: string | null) => void;
   onAdd: () => void; dragStart: (e: React.PointerEvent, labelId: string, elId: string, el: El) => void;
   delEl: (id: string) => void; addTextAt: (labelId: string, x: number, y: number) => void;
-  editId?: string | null; startEdit?: (id: string) => void; commitText?: (id: string, t: string) => void; endEdit?: () => void; forPrint?: boolean;
+  editId?: string | null; startEdit?: (id: string) => void; commitText?: (id: string, t: string) => void; endEdit?: () => void; deleteLabelId?: (id: string) => void; forPrint?: boolean;
 }) {
   const L = layout(project);
   return (
@@ -664,7 +666,7 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
           <LabelView key={label.id} label={label} W={sz.w * MM} H={sz.h * MM} editing={editing && !forPrint} opts={optsFor(label, project, editing && !forPrint)}
             selectedLabel={selLabel === label.id} selectedEl={selLabel === label.id ? selEl : null}
             onSelectLabel={() => setSelLabel(label.id)} onSelectEl={(id) => { setSelLabel(label.id); setSelEl(id); }}
-            onDragStart={dragStart} onDelEl={delEl} onAddText={(x, y) => addTextAt(label.id, x, y)}
+            onDragStart={dragStart} onDelEl={delEl} onAddText={(x, y) => addTextAt(label.id, x, y)} onDeleteLabel={deleteLabelId ? () => deleteLabelId(label.id) : undefined}
             editId={editId} onStartEdit={startEdit} onCommitText={commitText} onEndEdit={endEdit} />
         ); })}
         {!forPrint && <button onClick={(e) => { e.stopPropagation(); onAdd(); }} style={{ width: L.lw, height: Math.min(L.lh, 220), border: '2px dashed #cbd5e1', borderRadius: 8, background: '#f8fafc', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: SYS, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}><span style={{ fontSize: 22 }}>＋</span>Ajouter</button>}
@@ -1302,6 +1304,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const addLabel = () => { const t = current?.type || 'prix-promo'; const nl = newLabel(t); setProject(p => ({ ...p, labels: [...p.labels, nl] })); setSelLabel(nl.id); setSelEl(null); };
   const duplicateLabel = () => { if (!current) return; const copy: Label = { ...current, id: uid(), overrides: { ...current.overrides }, extra: current.extra.map(e => ({ ...e })) }; setProject(p => ({ ...p, labels: [...p.labels, copy] })); setSelLabel(copy.id); };
   const deleteLabel = () => { if (!current) return; setProject(p => ({ ...p, labels: p.labels.filter(l => l.id !== current.id) })); setSelLabel(null); setSelEl(null); };
+  const deleteLabelById = (id: string) => { setProject(p => ({ ...p, labels: p.labels.filter(l => l.id !== id) })); if (selLabel === id) { setSelLabel(null); setSelEl(null); } };
   // Réordonne l'étiquette sélectionnée (ordre = ordre d'impression).
   const moveLabel = (dir: -1 | 1) => { if (!current) return; setProject(p => { const i = p.labels.findIndex(l => l.id === current.id); const j = i + dir; if (i < 0 || j < 0 || j >= p.labels.length) return p; const ls = p.labels.slice(); [ls[i], ls[j]] = [ls[j], ls[i]]; return { ...p, labels: ls }; }); };
   const labelIndex = current ? project.labels.findIndex(l => l.id === current.id) : -1;
@@ -1328,14 +1331,18 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, [updateLabel]);
 
-  // Raccourcis Annuler / Refaire (hors champs de saisie)
+  // Suppression au clavier : élément sélectionné sinon étiquette sélectionnée.
+  const delKeyRef = useRef<() => void>(() => {});
+  delKeyRef.current = () => { if (selEl) delEl(selEl); else if (selLabel) deleteLabelById(selLabel); };
+  // Raccourcis Annuler / Refaire / Suppr (hors champs de saisie)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       const k = e.key.toLowerCase();
       if ((e.ctrlKey || e.metaKey) && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
       else if ((e.ctrlKey || e.metaKey) && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+      else if (!e.ctrlKey && !e.metaKey && (k === 'delete' || k === 'backspace')) { e.preventDefault(); delKeyRef.current(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -1370,7 +1377,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
           {overflow && <div style={{ background: '#7c2d12', color: '#fed7aa', fontSize: 12, padding: '6px 16px' }}>⚠ {project.labels.length} étiquettes pour {L.capacity} emplacement(s) — réduisez la taille ou changez de format.</div>}
           <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? 8 : 28, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
             <div style={{ width: L.PW * scale, height: L.PH * scale, flexShrink: 0 }}>
-              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} editId={editId} startEdit={(id) => { pickEl(id); setEditId(id); }} commitText={(id, t) => patchElById(id, { text: t })} endEdit={() => setEditId(null)} />
+              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} editId={editId} startEdit={(id) => { pickEl(id); setEditId(id); }} commitText={(id, t) => patchElById(id, { text: t })} endEdit={() => setEditId(null)} deleteLabelId={deleteLabelById} />
             </div>
           </div>
         </main>
@@ -1579,10 +1586,13 @@ function PrintPreviewModal({ project, setProject, onClose }: { project: Project;
 //  BIBLIOTHÈQUE + LOGIN + ORCHESTRATION
 // ──────────────────────────────────────────────────────────────────────
 
-function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onDuplicate, onExport, onImport, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onRename: (id: string, pharmacy: string, plan: string) => void; onDuplicate: (id: string) => void; onExport: () => void; onImport: (file: File) => void; onLogout: () => void; }) {
+function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onDuplicate, onDeleteMany, onExport, onImport, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onRename: (id: string, pharmacy: string, plan: string) => void; onDuplicate: (id: string) => void; onDeleteMany: (ids: string[]) => void; onExport: () => void; onImport: (file: File) => void; onLogout: () => void; }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
   const [draftPlan, setDraftPlan] = useState('');
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const toggleSel = (id: string) => setSel(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const deleteSelected = () => { if (sel.size && confirm(`Supprimer ${sel.size} planche${sel.size > 1 ? 's' : ''} ?`)) { onDeleteMany([...sel]); setSel(new Set()); } };
   const startEdit = (m: Meta) => { setEditId(m.id); setDraftName(m.pharmacy); setDraftPlan(m.plan); };
   const commit = () => { if (editId) onRename(editId, draftName.trim() || 'Sans nom', draftPlan.trim()); setEditId(null); };
   const cardInp: CSSProperties = { width: '100%', padding: '6px 7px', background: '#1e293b', color: '#e2e8f0', border: '1px solid #16a34a', borderRadius: 5, fontSize: 13, boxSizing: 'border-box', fontFamily: SYS, marginBottom: 6 };
@@ -1598,6 +1608,8 @@ function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onDuplicate, 
           <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, marginRight: 'auto' }}>Planches promotionnelles</h1>
           <button onClick={onExport} disabled={!metas.length} title="Télécharger une sauvegarde (.json) de toutes vos planches" style={{ padding: '10px 14px', background: '#1e293b', color: metas.length ? '#cbd5e1' : '#475569', border: '1px solid #334155', borderRadius: 8, cursor: metas.length ? 'pointer' : 'default', fontSize: 13, fontWeight: 700 }}>⬇ Sauvegarder</button>
           <label title="Restaurer des planches depuis un fichier de sauvegarde (.json)" style={{ padding: '10px 14px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>⬆ Restaurer<input type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) { onImport(e.target.files[0]); e.target.value = ''; } }} /></label>
+          {sel.size > 0 && <button onClick={deleteSelected} style={{ padding: '10px 14px', background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 800 }}>🗑 Supprimer ({sel.size})</button>}
+          {sel.size > 0 && <button onClick={() => setSel(new Set())} style={{ padding: '10px 12px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Annuler</button>}
           <button onClick={onNew} style={{ padding: '10px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 800, boxShadow: '0 2px 12px #16a34a55' }}>＋ Nouvelle planche</button>
         </div>
         {metas.length === 0 ? (
@@ -1607,7 +1619,8 @@ function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onDuplicate, 
             {metas.map(m => {
               const editing = editId === m.id;
               return (
-              <div key={m.id} onClick={() => { if (!editing) onOpen(m.id); }} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 18, cursor: editing ? 'default' : 'pointer' }} onMouseEnter={e => (e.currentTarget.style.borderColor = '#16a34a')} onMouseLeave={e => (e.currentTarget.style.borderColor = '#1e293b')}>
+              <div key={m.id} onClick={() => { if (!editing) onOpen(m.id); }} style={{ position: 'relative', background: '#0f172a', border: `1px solid ${sel.has(m.id) ? '#ef4444' : '#1e293b'}`, borderRadius: 12, padding: 18, cursor: editing ? 'default' : 'pointer' }} onMouseEnter={e => { if (!sel.has(m.id)) e.currentTarget.style.borderColor = '#16a34a'; }} onMouseLeave={e => { e.currentTarget.style.borderColor = sel.has(m.id) ? '#ef4444' : '#1e293b'; }}>
+                <label onClick={e => e.stopPropagation()} title="Sélectionner pour suppression" style={{ position: 'absolute', top: 10, left: 10, zIndex: 2, background: '#0f172acc', borderRadius: 5, padding: 3, display: 'flex', cursor: 'pointer' }}><input type="checkbox" checked={sel.has(m.id)} onChange={() => toggleSel(m.id)} /></label>
                 <div style={{ height: 80, background: 'linear-gradient(135deg,#FFD400,#F5C800)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, marginBottom: 12 }}>🏷️</div>
                 {editing ? (
                   <div onClick={e => e.stopPropagation()}>
@@ -1698,6 +1711,7 @@ export default function Home() {
   const deletePlanche = async (id: string) => { await store.remove(id); refreshList(store); };
   const renamePlanche = async (id: string, pharmacy: string, plan: string) => { const p = await store.get(id); if (!p) return; await store.save(id, { ...p, pharmacy, plan }); refreshList(store); };
   const duplicatePlanche = async (id: string) => { const p = await store.get(id); if (!p) return; await store.create({ ...p, pharmacy: `${p.pharmacy} (copie)` }); refreshList(store); };
+  const deleteManyPlanches = async (ids: string[]) => { for (const id of ids) await store.remove(id); refreshList(store); };
 
   // Bibliothèque de logos (cloud si configuré, sinon local)
   const logoStore = mode === 'server' ? serverLogos : localLogos;
@@ -1774,5 +1788,5 @@ export default function Home() {
   if (view === 'loading') return <div style={{ minHeight: '100vh', background: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontFamily: SYS }}>Chargement…</div>;
   if (view === 'login') return <Login onSubmit={doLogin} error={loginErr} />;
   if (view === 'studio' && project) return <Studio project={project} setProject={setProject} onBack={backToLibrary} saving={saving} mode={mode} undo={undo} redo={redo} canUndo={past.current.length > 0} canRedo={future.current.length > 0} logos={logos} onSaveLogo={saveLogo} onDeleteLogo={deleteLogo} />;
-  return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onRename={renamePlanche} onDuplicate={duplicatePlanche} onExport={exportAll} onImport={importBackup} onLogout={logout} />;
+  return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onRename={renamePlanche} onDuplicate={duplicatePlanche} onDeleteMany={deleteManyPlanches} onExport={exportAll} onImport={importBackup} onLogout={logout} />;
 }
