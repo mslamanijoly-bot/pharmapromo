@@ -917,14 +917,19 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
         <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Importer des produits</div>
         <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>Fichier <strong>.xlsx</strong> ou <strong>.csv</strong>, ou collez depuis Excel. Accents et colonnes gérés automatiquement — vous pouvez corriger le mappage.</div>
 
+        <div style={{ flex: '1 1 200px', marginBottom: 12 }}><label style={lbl}>Type d&apos;étiquette</label><select value={type} onChange={e => setType(e.target.value as PromoType)} style={{ ...inp, cursor: 'pointer' }}>{TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
+
+        <div style={{ background: '#0c2a1c', border: '1px solid #166534', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: '#cbd5e1', marginBottom: 8 }}>① Récupérez le modèle prérempli, remplissez vos lignes, puis réimportez-le : les colonnes se mappent toutes seules.</div>
+          <button onClick={() => downloadTemplate(type)} style={{ width: '100%', padding: '11px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 14, fontWeight: 800 }}>⬇ Télécharger le modèle Excel — {TYPES.find(t => t.id === type)?.label}</button>
+        </div>
+
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
-          <div style={{ flex: '1 1 200px' }}><label style={lbl}>Type d&apos;étiquette</label><select value={type} onChange={e => setType(e.target.value as PromoType)} style={{ ...inp, cursor: 'pointer' }}>{TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
-          <button onClick={() => downloadTemplate(type)} title="Télécharger le modèle prérempli pour ce type" style={{ ...inp, width: 'auto', cursor: 'pointer', padding: '8px 14px', textAlign: 'center', fontWeight: 700, color: '#86efac', borderColor: '#166534' }}>⬇ Modèle Excel ({TYPES.find(t => t.id === type)?.label})</button>
+          <div style={{ fontSize: 12, color: '#94a3b8', alignSelf: 'center' }}>② Importez votre fichier :</div>
           <label style={{ ...inp, width: 'auto', cursor: 'pointer', padding: '8px 14px', textAlign: 'center' }}>📁 Choisir un fichier (.xlsx / .csv)
             <input type="file" accept=".xlsx,.xls,.csv,text/csv,text/plain" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && onFile(e.target.files[0])} />
           </label>
         </div>
-        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 12, lineHeight: 1.5 }}>👉 <strong style={{ color: '#86efac' }}>Téléchargez le modèle</strong>, remplissez vos lignes (gardez la 1ʳᵉ ligne d&apos;en-têtes), enregistrez, puis réimportez-le ici. Les colonnes se mappent toutes seules.</div>
         {fileName && <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>📄 {fileName} — {body.length} ligne(s) de données</div>}
 
         <Field label="…ou coller depuis Excel (Ctrl+V)"><textarea placeholder={example} rows={3} onChange={e => onText(e.target.value)} style={{ ...inp, resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5 }} /></Field>
