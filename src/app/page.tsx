@@ -825,11 +825,13 @@ async function downloadTemplate(type: PromoType) {
   const t = TEMPLATES[type];
   try {
     const mod = await import('write-excel-file/browser');
-    const writeXlsx = mod.default as unknown as (data: unknown, opts: Record<string, unknown>) => Promise<unknown>;
+    const writeXlsx = mod.default as unknown as (data: unknown, opts: Record<string, unknown>) => { toBlob: () => Promise<Blob> };
     const header = t.headers.map(h => ({ value: h, fontWeight: 'bold', align: 'center', backgroundColor: '#E7F2EC', color: '#0A5C3A' }));
     const rows = t.rows.map(r => r.map(c => ({ value: c, type: String })));
     const columns = t.headers.map(h => ({ width: Math.max(16, h.length + 4) }));
-    await writeXlsx([header, ...rows], { columns, fileName: `modele-pharmapromo-${type}.xlsx`, sheet: (TYPES.find(x => x.id === type)?.label || 'Modèle').slice(0, 31) });
+    const sheet = (TYPES.find(x => x.id === type)?.label || 'Modèle').slice(0, 31);
+    const blob = await writeXlsx([header, ...rows], { columns, sheet }).toBlob();
+    triggerDownload(blob, `modele-pharmapromo-${type}.xlsx`);
   } catch {
     triggerDownload(new Blob([templateCsv(type)], { type: 'text/csv;charset=utf-8' }), `modele-pharmapromo-${type}.csv`);
   }
