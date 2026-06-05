@@ -242,22 +242,26 @@ function offiBurst(big: string, small: string | null, asp: number, y = 30, w = 4
 
 function officinePrixPromo(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 0.7;
-  const { normal, pct } = priceParts(d.normalPrice, d.promoPrice);
+  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
   const manual = (d.remiseManual || '').trim();
-  const pctVal = d.remiseType === 'pct' ? (manual || pct) : pct;
+  // Remise toujours présente s'il y a une réduction : % si dispo, sinon € (et vice-versa).
+  const discTxt = d.remiseType === 'pct'
+    ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : ''))
+    : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
   const hasOld = normal > pf(d.promoPrice);
+  // Rythme vertical fixe avec marges → s'adapte aux noms longs (produit sur 2 lignes max).
   const out: El[] = [...offiHeader(d, asp),
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 11, w: 90, size: fitSize(d.product, 0.9, asp, 0.058, 2, 0.036), color: OFFI.greenDark, weight: 900, align: 'center' },
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 11, w: 90, size: fitSize(d.product, 0.92, asp, 0.05, 2, 0.03), color: OFFI.greenDark, weight: 900, align: 'center' },
   ];
   if (hasOld) out.push(
-    { ...B, id: 'oldLabel', kind: 'text', text: 'AU LIEU DE', x: 0, y: 21.5, w: 100, size: 0.018, color: OFFI.muted, weight: 700, align: 'center', track: 0.14 },
-    { ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 23.3, w: 100, size: 0.036, color: OFFI.old, weight: 800, align: 'center', strike: true, strikeW: 0.045 },
+    { ...B, id: 'oldLabel', kind: 'text', text: 'AU LIEU DE', x: 0, y: 25.5, w: 100, size: 0.018, color: OFFI.muted, weight: 700, align: 'center', track: 0.14 },
+    { ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 27.5, w: 100, size: 0.034, color: OFFI.old, weight: 800, align: 'center', strike: true, strikeW: 0.045 },
   );
-  // −% : accroche géante (le plus gros élément)
-  if (pctVal) out.push(...offiBurst(`-${pctVal}%`, null, asp, 29, 48));
-  // Prix héros (rouge), sous l'accroche
-  out.push({ ...B, id: 'price', kind: 'text', text: `${d.promoPrice} €`, x: 2, y: 64, w: 96, size: fitSize(`${d.promoPrice} €`, 0.96, asp, 0.15, 1, 0.1), color: OFFI.promo, weight: 900, align: 'center' });
-  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 80, w: 88, size: fitSize(d.qtyLabel, 0.9, asp, 0.024, 1, 0.017), color: OFFI.muted, weight: 600, align: 'center', italic: true });
+  // Remise = accroche (gros disque rouge centré)
+  if (discTxt) out.push(...offiBurst(discTxt, null, asp, 33, 42));
+  // Prix de vente en ROUGE (héros), toujours ajusté à sa largeur
+  out.push({ ...B, id: 'price', kind: 'text', text: `${d.promoPrice} €`, x: 2, y: 64, w: 96, size: fitSize(`${d.promoPrice} €`, 0.96, asp, 0.135, 1, 0.09), color: OFFI.promo, weight: 900, align: 'center' });
+  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 79.5, w: 88, size: fitSize(d.qtyLabel, 0.92, asp, 0.022, 1, 0.016), color: OFFI.muted, weight: 600, align: 'center', italic: true });
   out.push(...offiFooter(l, o));
   return out;
 }
