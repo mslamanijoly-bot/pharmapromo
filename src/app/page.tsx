@@ -77,6 +77,9 @@ const WATERMARK = (() => {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 })();
 
+// Style « Choc » : sombre + néon (look promo agressif haut de gamme)
+const CHOC = { bg: '#0E0E14', cat: '#FFE000', product: '#FFFFFF', price: '#FFE000', old: '#8A8F98', accent: '#FF2630', muted: '#7A828C' };
+
 const TYPES: { id: PromoType; label: string; icon: string; color: string }[] = [
   { id: 'prix-promo',    label: 'Prix Promo',       icon: '🏷️', color: '#D81E27' },
   { id: 'bon-reduction', label: 'Bon de Réduction', icon: '✂️', color: '#15803d' },
@@ -160,8 +163,8 @@ function migrate(p: Project): Project {
   if (q.disclaimer == null) q.disclaimer = DISCLAIMER;
   if (!q.printPaper) q.printPaper = 'A4';
   if (q.printMarginMm == null) q.printMarginMm = 0;
-  // thèmes premium retirés : tout repasse en « promo »
-  q.theme = 'promo';
+  // styles disponibles : « promo » (clair) et « choc » (sombre). Legacy → promo.
+  if (!q.theme || q.theme === 'luxe' || q.theme === 'editorial' || q.theme === 'premium') q.theme = 'promo';
   q.labels = (q.labels || []).map(l => ({ ...l, data: { ...newData(), ...l.data } }));
   return q;
 }
@@ -200,7 +203,52 @@ function footEls(l: Label, o: SeedOpts): El[] {
   return out;
 }
 
+// ── Style « Choc » : sombre + néon, prix géant, pastille −%, barre d'économie ──
+// Un seul exemple : Prix Promo en portrait (le format phare A4). Les autres cas
+// retombent sur le style « Promo » classique.
+function chocPromoPortrait(l: Label, o: SeedOpts): El[] {
+  const d = l.data, asp = o.aspect || 0.7;
+  const { normal, intp, cents, remise, pct } = priceParts(d.normalPrice, d.promoPrice);
+  const manual = (d.remiseManual || '').trim();
+  const pctVal = d.remiseType === 'pct' ? (manual || pct) : pct;
+  const econ = d.remiseType === 'pct'
+    ? (manual ? `${manual}%` : (pct ? `${pct}%` : ''))
+    : (manual ? `${manual}€` : (remise ? `${remise}€` : ''));
+  const hasOld = normal > pf(d.promoPrice);
+  const dt = dateText(d);
+  const out: El[] = [
+    { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: CHOC.bg, size: 0, color: CHOC.bg, weight: 400, align: 'left' },
+    { ...B, id: 'accent', kind: 'box', x: 0, y: 0, w: 100, h: 1.4, bg: CHOC.accent, size: 0, color: CHOC.accent, weight: 400, align: 'left' },
+    { ...B, id: 'cat', kind: 'text', text: d.category, x: 6, y: 4, w: 88, size: fitSize(d.category, 0.86, asp, 0.03, 1, 0.016), color: CHOC.cat, weight: 800, align: 'center', track: 0.18 },
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 10, w: 88, size: fitSize(d.product, 0.86, asp, 0.072, 2, 0.04), color: CHOC.product, weight: 900, align: 'center' },
+    { ...B, id: 'chocTag', kind: 'text', text: 'PRIX CHOC', x: 0, y: 24, w: 100, size: 0.03, color: CHOC.accent, weight: 900, align: 'center', track: 0.22 },
+  ];
+  if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 28.5, w: 100, size: 0.034, color: CHOC.old, weight: 700, align: 'center', strike: true, strikeW: 0.055 });
+  // Prix géant à gauche
+  out.push(
+    { ...B, id: 'priceInt', kind: 'text', text: intp, x: 6, y: 34, size: 0.25, color: CHOC.price, weight: 900, align: 'left' },
+    { ...B, id: 'euro', kind: 'text', text: '€', x: 45, y: 37, size: 0.085, color: CHOC.price, weight: 900, align: 'left' },
+    { ...B, id: 'cents', kind: 'text', text: cents, x: 45, y: 49, size: 0.095, color: CHOC.price, weight: 900, align: 'left' },
+  );
+  // Pastille −% à droite (le « disque choc »)
+  if (pctVal) out.push(
+    { ...B, id: 'burst', kind: 'box', shape: 'circle', x: 60, y: 32, w: 36, bg: CHOC.accent, size: 0, color: CHOC.accent, weight: 400, align: 'left', shadow: true },
+    { ...B, id: 'burstTxt', kind: 'text', text: `-${pctVal}%`, x: 60, y: 41, w: 36, size: 0.085, color: '#fff', weight: 900, align: 'center' },
+  );
+  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 62, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: CHOC.muted, weight: 600, align: 'center', italic: true });
+  // Barre d'économie
+  if (econ) out.push(
+    { ...B, id: 'saveBox', kind: 'box', x: 14, y: 69, w: 72, h: 8, bg: CHOC.accent, radius: 999, size: 0, color: CHOC.accent, weight: 400, align: 'left', shadow: true },
+    { ...B, id: 'saveTxt', kind: 'text', text: `VOUS ÉCONOMISEZ ${econ}`, x: 14, y: 71.2, w: 72, size: 0.03, color: '#fff', weight: 900, align: 'center', track: 0.04 },
+  );
+  out.push({ ...B, id: 'urgency', kind: 'text', text: dt || '⚡ OFFRE À SAISIR — STOCK LIMITÉ', x: 6, y: 81, w: 88, size: 0.024, color: CHOC.cat, weight: 800, align: 'center', track: 0.05 });
+  if (!o.small && o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 8, y: 95, w: 84, size: 0.014, color: CHOC.muted, weight: 400, align: 'center' });
+  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 43, y: 86, w: 14, size: 0, color: '#000', weight: 400, align: 'left' });
+  return out;
+}
+
 function seedEls(l: Label, o: SeedOpts): El[] {
+  if (o.theme === 'choc' && l.type === 'prix-promo' && !o.landscape) return chocPromoPortrait(l, o);
   const a = l.accent, d = l.data;
   const asp = o.aspect || 0.7;
   // Aplat mat, centré : pas de point lumineux blanc, léger fondu vers le bord.
@@ -317,8 +365,8 @@ function resolveEls(l: Label, o: SeedOpts): El[] {
   return [...bound, ...l.extra];
 }
 function isBound(l: Label, id: string): boolean {
-  for (const landscape of [false, true]) {
-    if (seedEls(l, { ...FULL, landscape }).some(e => e.id === id)) return true;
+  for (const theme of ['promo', 'choc']) for (const landscape of [false, true]) {
+    if (seedEls(l, { ...FULL, landscape, theme }).some(e => e.id === id)) return true;
   }
   return false;
 }
@@ -412,7 +460,7 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
           <div key={e.id}
             onPointerDown={(ev) => { if (editing && !isEd) { ev.stopPropagation(); onSelectEl(e.id); onDragStart(ev, label.id, e.id, e); } }}
             onDoubleClick={editing && editable ? (ev) => { ev.stopPropagation(); onStartEdit?.(e.id); } : undefined}
-            style={{ ...renderEl(e, H), outline: sel && !isEd ? `1.5px solid ${selColor}` : 'none', outlineOffset: 2, cursor: editing ? (isEd ? 'text' : 'move') : 'default', userSelect: isEd ? 'text' : 'none', touchAction: 'none' }}>
+            style={{ ...renderEl(e, H), outline: sel && !isEd ? `1.5px solid ${selColor}` : 'none', outlineOffset: 2, cursor: editing ? (isEd ? 'text' : 'move') : 'default', userSelect: isEd ? 'text' : 'none', touchAction: 'none', pointerEvents: e.id === 'bgcover' ? 'none' : undefined }}>
             {isEd
               ? <EditableText initial={e.text || ''} onCommit={(t) => { onCommitText?.(e.id, t); onEndEdit?.(); }} onCancel={() => onEndEdit?.()} />
               : (e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} /> : (e.kind === 'box' ? null : e.text))}
@@ -839,6 +887,8 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     const flip = (p.labelWmm > p.labelHmm * 1.5) !== (w > h * 1.5);
     return { ...p, labelWmm: w, labelHmm: h, labels: flip ? p.labels.map(l => ({ ...l, overrides: {} })) : p.labels };
   });
+  // Changement de style : on repart des positions par défaut (compositions différentes).
+  const setTheme = (t: string) => setProject(p => p.theme === t ? p : ({ ...p, theme: t, labels: p.labels.map(l => ({ ...l, overrides: {} })) }));
   const current = project.labels.find(l => l.id === selLabel) || null;
   const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true, small: L.small, aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo' };
   const currentEl: El | null = current && selEl ? resolveEls(current, seedOpts).find(e => e.id === selEl) || null : null;
@@ -924,6 +974,9 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
               <button onClick={() => setShowImport(true)} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>⬆ Importer</button>
               <button onClick={addLabel} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Étiquette</button>
               <button onClick={() => addTextBlock()} title="Ajouter un bloc de texte (ou double-cliquez sur l'étiquette)" style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Texte</button>
+              <div style={{ display: 'flex', gap: 3, border: '1px solid #334155', borderRadius: 7, padding: 2 }} title="Style d'étiquette (non destructif)">
+                {[{ id: 'promo', t: '🏷️ Promo', c: '#16a34a' }, { id: 'choc', t: '⚡ Choc', c: '#FF2630' }].map(th => { const on = (project.theme || 'promo') === th.id; return <button key={th.id} onClick={() => setTheme(th.id)} style={{ padding: '4px 9px', background: on ? th.c : 'transparent', color: on ? '#fff' : '#94a3b8', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{th.t}</button>; })}
+              </div>
               <button onClick={() => setShowPreview(true)} style={{ padding: '7px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 800, boxShadow: '0 2px 10px #16a34a66' }}>🖨 Imprimer / PDF</button>
             </div>
           </div>
