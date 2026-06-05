@@ -981,6 +981,15 @@ function autoMap(fields: ImpField[], header: string[], hasHeader: boolean, body:
   return map;
 }
 
+// Mémorisation du mappage par « signature » de fichier (mêmes en-têtes = même fournisseur).
+const impMapKey = (header: string[], type: PromoType) => 'pp:impmap:' + type + '|' + header.map(h => (h || '').trim().toLowerCase()).join('§').slice(0, 200);
+function loadImportMap(header: string[], type: PromoType): { mapping: Record<string, number>; formatCol: number } | null {
+  try { const v = localStorage.getItem(impMapKey(header, type)); return v ? JSON.parse(v) : null; } catch { return null; }
+}
+function saveImportMap(header: string[], type: PromoType, mapping: Record<string, number>, formatCol: number) {
+  try { localStorage.setItem(impMapKey(header, type), JSON.stringify({ mapping, formatCol })); } catch { /* quota */ }
+}
+
 function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (labels: Label[]) => void }) {
   const [type, setType] = useState<PromoType>('prix-promo');
   const [rows, setRows] = useState<string[][]>([]);
@@ -994,13 +1003,20 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
   const ncols = rows.reduce((m, r) => Math.max(m, r.length), 0);
 
   // (re)calcule le mappage auto à chaque changement de données / type / en-tête
+  const [remembered, setRemembered] = useState(false);
   useEffect(() => {
     if (!rows.length) return;
-    setMapping(autoMap(IMPORT_FIELDS[type], rows[0] || [], hasHeader, hasHeader ? rows.slice(1) : rows));
-    // détecte la colonne « Format » par son en-tête
-    setFormatCol(hasHeader ? (rows[0] || []).findIndex(h => FORMAT_KW.test(h)) : -1);
+    const header = rows[0] || [];
+    const saved = hasHeader ? loadImportMap(header, type) : null;
+    if (saved) { setMapping(saved.mapping); setFormatCol(saved.formatCol); setRemembered(true); }
+    else {
+      setMapping(autoMap(IMPORT_FIELDS[type], header, hasHeader, hasHeader ? rows.slice(1) : rows));
+      setFormatCol(hasHeader ? header.findIndex(h => FORMAT_KW.test(h)) : -1);
+      setRemembered(false);
+    }
     setExcluded(new Set()); // tout coché par défaut
   }, [rows, type, hasHeader]);
+  const resetMapping = () => { setMapping(autoMap(IMPORT_FIELDS[type], rows[0] || [], hasHeader, hasHeader ? rows.slice(1) : rows)); setFormatCol(hasHeader ? (rows[0] || []).findIndex(h => FORMAT_KW.test(h)) : -1); setRemembered(false); };
 
   // Empile les tableaux côte à côte en une seule liste, puis détecte l'en-tête.
   const loadRows = (rws: string[][]) => { const s = stackColumnBlocks(rws); setRows(s); setHasHeader(detectHeader(s)); setError(s.length ? '' : 'Aucune donnée détectée.'); };
@@ -1039,6 +1055,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
   const toggleAll = () => setExcluded(s => (s.size === 0 ? new Set(prepared.map((_, i) => i)) : new Set()));
   const build = () => {
     if (!selectedCount) { setError('Cochez au moins un produit à générer.'); return; }
+    if (hasHeader && rows[0]) saveImportMap(rows[0], type, mapping, formatCol); // mémorise pour ce fournisseur
     const labels = selected.map(({ d, r }) => {
       if (!d.category) d.category = 'PROMOTION';
       const f = formatCol >= 0 ? matchFormat(r[formatCol] || '') : null;
@@ -1079,7 +1096,10 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
             <input type="checkbox" checked={hasHeader} onChange={e => setHasHeader(e.target.checked)} /> La 1ʳᵉ ligne contient les en-têtes de colonnes
           </label>
 
-          <SectionTitle>Correspondance des colonnes</SectionTitle>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <SectionTitle>Correspondance des colonnes</SectionTitle>
+            {remembered && <span style={{ marginLeft: 'auto', fontSize: 10, color: '#86efac' }}>✓ mappage mémorisé <button onClick={resetMapping} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 10, textDecoration: 'underline' }}>réinitialiser</button></span>}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
             {fields.map(f => (
               <div key={f.key}>
