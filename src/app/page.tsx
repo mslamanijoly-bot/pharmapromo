@@ -106,6 +106,9 @@ const BADGES = [
   { t: 'DERNIERS JOURS', bg: '#b91c1c' },
 ];
 
+// Couleurs rapides pour les textes (charte + classiques)
+const TEXT_COLORS = ['#21392B', '#2E4A3D', '#000000', '#FFFFFF', '#D81E27', '#C2410C', '#FFD400', '#15803d', '#1d4ed8', '#7c3aed'];
+
 const PAGE_FORMATS = [
   { id: 'fit', name: '1 / page', w: 0, h: 0 },
   { id: 'A4', name: 'A4', w: 210, h: 297 },
@@ -589,7 +592,15 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
       </Field>
       <Field label="Graisse"><div style={{ display: 'flex', gap: 5 }}>{[{ v: 400, t: 'Normal' }, { v: 700, t: 'Gras' }, { v: 900, t: 'Extra' }].map(g => <button key={g.v} onClick={() => patch({ weight: g.v })} style={{ flex: 1, padding: '6px', background: el.weight === g.v ? '#16a34a' : '#1e293b', color: el.weight === g.v ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: g.v }}>{g.t}</button>)}</div></Field>
       <Field label="Alignement"><div style={{ display: 'flex', gap: 5 }}>{(['left', 'center', 'right'] as Align[]).map(al => <button key={al} onClick={() => patch({ align: al })} style={{ flex: 1, padding: '6px', background: el.align === al ? '#16a34a' : '#1e293b', color: el.align === al ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 13 }}>{al === 'left' ? '⬅' : al === 'center' ? '↔' : '➡'}</button>)}</div></Field>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><ColorRow label="Couleur texte" value={el.color} onChange={c => patch({ color: c })} />{el.kind === 'pill' && <ColorRow label="Fond pastille" value={el.bg || '#000000'} onChange={c => patch({ bg: c })} />}</div>
+      <Field label="Couleur du texte">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+          {TEXT_COLORS.map(c => { const on = el.color.toLowerCase() === c.toLowerCase(); return <button key={c} onClick={() => patch({ color: c })} title={c} style={{ width: 24, height: 24, borderRadius: 5, background: c, border: on ? '2px solid #16a34a' : '1px solid #475569', cursor: 'pointer', padding: 0, boxShadow: on ? '0 0 0 2px #16a34a55' : 'none' }} />; })}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#64748b', cursor: 'pointer' }}>
+            <input type="color" value={el.color.length === 7 ? el.color : '#000000'} onChange={e => patch({ color: e.target.value })} style={{ width: 26, height: 24, border: '1px solid #475569', borderRadius: 5, background: 'none', cursor: 'pointer', padding: 2 }} title="Couleur personnalisée" />+
+          </label>
+        </div>
+      </Field>
+      {el.kind === 'pill' && <ColorRow label="Fond pastille" value={el.bg || '#000000'} onChange={c => patch({ bg: c })} />}
       <Field label="Texte barré (prix)">
         <button onClick={() => patch({ strike: !el.strike })} style={{ width: '100%', padding: '6px', background: el.strike ? '#16a34a' : '#1e293b', color: el.strike ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{el.strike ? '✓ Barré activé' : 'Non barré'}</button>
       </Field>
