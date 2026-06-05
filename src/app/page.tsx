@@ -808,16 +808,31 @@ const TEMPLATES: Record<PromoType, { headers: string[]; rows: string[][] }> = {
   },
 };
 
-// Génère et télécharge le modèle CSV (ouvrable dans Excel) pour un type donné.
-function downloadTemplate(type: PromoType) {
-  const t = TEMPLATES[type];
-  const esc = (v: string) => /[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-  const csv = '﻿' + [t.headers, ...t.rows].map(r => r.map(esc).join(';')).join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+function triggerDownload(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `modele-pharmapromo-${type}.csv`;
+  a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+// Modèle CSV (repli si l'écriture xlsx échoue).
+function templateCsv(type: PromoType): string {
+  const t = TEMPLATES[type];
+  const esc = (v: string) => /[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  return '﻿' + [t.headers, ...t.rows].map(r => r.map(esc).join(';')).join('\r\n');
+}
+// Génère et télécharge le modèle en vrai .xlsx (repli .csv si besoin).
+async function downloadTemplate(type: PromoType) {
+  const t = TEMPLATES[type];
+  try {
+    const mod = await import('write-excel-file/browser');
+    const writeXlsx = mod.default as unknown as (data: unknown, opts: Record<string, unknown>) => Promise<unknown>;
+    const header = t.headers.map(h => ({ value: h, fontWeight: 'bold', align: 'center', backgroundColor: '#E7F2EC', color: '#0A5C3A' }));
+    const rows = t.rows.map(r => r.map(c => ({ value: c, type: String })));
+    const columns = t.headers.map(h => ({ width: Math.max(16, h.length + 4) }));
+    await writeXlsx([header, ...rows], { columns, fileName: `modele-pharmapromo-${type}.xlsx`, sheet: (TYPES.find(x => x.id === type)?.label || 'Modèle').slice(0, 31) });
+  } catch {
+    triggerDownload(new Blob([templateCsv(type)], { type: 'text/csv;charset=utf-8' }), `modele-pharmapromo-${type}.csv`);
+  }
 }
 
 function cellToStr(v: unknown): string {
