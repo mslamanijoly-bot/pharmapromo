@@ -376,7 +376,7 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
           <div key={e.id} onPointerDown={(ev) => { if (editing) { ev.stopPropagation(); onSelectEl(e.id); onDragStart(ev, label.id, e.id, e); } }}
             style={{ ...renderEl(e, H), outline: sel ? `1.5px solid ${selColor}` : 'none', outlineOffset: 2, cursor: editing ? 'move' : 'default', userSelect: 'none', touchAction: 'none' }}>
             {e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} /> : (e.kind === 'box' ? null : e.text)}
-            {sel && e.removable && <button onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onDelEl(e.id); }} style={{ position: 'absolute', top: -10, right: -10, width: 18, height: 18, borderRadius: '50%', background: '#ef4444', color: '#fff', border: '2px solid #fff', fontSize: 11, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>}
+            {sel && <button title="Supprimer ce bloc" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onDelEl(e.id); }} style={{ position: 'absolute', top: -10, right: -10, width: 18, height: 18, borderRadius: '50%', background: '#ef4444', color: '#fff', border: '2px solid #fff', fontSize: 11, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>}
           </div>
         );
       })}
@@ -541,7 +541,13 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
     {(el.kind === 'text' || el.kind === 'pill') && (<>
       <Field label="Texte"><input value={el.text || ''} onChange={e => patch({ text: e.target.value })} style={inp} /></Field>
       <Field label="Police"><select value={el.font} onChange={e => patch({ font: e.target.value })} style={{ ...inp, cursor: 'pointer' }}>{FONTS.map(f => <option key={f.name} value={f.css}>{f.name}</option>)}</select></Field>
-      <Slider label="Taille" value={Math.round(el.size * 1000) / 10} min={1} max={55} step={0.5} suffix="%" onChange={v => patch({ size: v / 100 })} />
+      <Field label={`Taille du texte : ${Math.round(el.size * 1000) / 10}%`}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button onClick={() => patch({ size: Math.max(0.005, Math.round((el.size - 0.005) * 1000) / 1000) })} title="Réduire" style={{ width: 30, height: 28, background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 14, fontWeight: 800 }}>A−</button>
+          <input type="range" min={0.5} max={70} step={0.5} value={Math.round(el.size * 1000) / 10} onChange={e => patch({ size: parseFloat(e.target.value) / 100 })} style={{ flex: 1 }} />
+          <button onClick={() => patch({ size: Math.min(0.7, Math.round((el.size + 0.005) * 1000) / 1000) })} title="Agrandir" style={{ width: 30, height: 28, background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 16, fontWeight: 800 }}>A＋</button>
+        </div>
+      </Field>
       <Field label="Graisse"><div style={{ display: 'flex', gap: 5 }}>{[{ v: 400, t: 'Normal' }, { v: 700, t: 'Gras' }, { v: 900, t: 'Extra' }].map(g => <button key={g.v} onClick={() => patch({ weight: g.v })} style={{ flex: 1, padding: '6px', background: el.weight === g.v ? '#16a34a' : '#1e293b', color: el.weight === g.v ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: g.v }}>{g.t}</button>)}</div></Field>
       <Field label="Alignement"><div style={{ display: 'flex', gap: 5 }}>{(['left', 'center', 'right'] as Align[]).map(al => <button key={al} onClick={() => patch({ align: al })} style={{ flex: 1, padding: '6px', background: el.align === al ? '#16a34a' : '#1e293b', color: el.align === al ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 13 }}>{al === 'left' ? '⬅' : al === 'center' ? '↔' : '➡'}</button>)}</div></Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><ColorRow label="Couleur texte" value={el.color} onChange={c => patch({ color: c })} />{el.kind === 'pill' && <ColorRow label="Fond pastille" value={el.bg || '#000000'} onChange={c => patch({ bg: c })} />}</div>
@@ -786,7 +792,13 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const updateLabel = useCallback((id: string, fn: (l: Label) => Label) => setProject(p => ({ ...p, labels: p.labels.map(l => l.id === id ? fn(l) : l) })), [setProject]);
   const setData = (k: keyof LabelData, v: string) => { if (current) updateLabel(current.id, l => ({ ...l, data: { ...l.data, [k]: v } })); };
   const patchEl = (patch: Partial<El>) => { if (!current || !selEl) return; const id = selEl; updateLabel(current.id, l => isBound(l, id) ? { ...l, overrides: { ...l.overrides, [id]: { ...l.overrides[id], ...patch } } } : { ...l, extra: l.extra.map(e => e.id === id ? { ...e, ...patch } : e) }); };
-  const delEl = (id: string) => { if (current) { updateLabel(current.id, l => ({ ...l, extra: l.extra.filter(e => e.id !== id) })); if (selEl === id) setSelEl(null); } };
+  // Supprimer un bloc : les blocs ajoutés sont retirés, les blocs du modèle sont masqués (réversible).
+  const delEl = (id: string) => { if (!current) return; updateLabel(current.id, l => isBound(l, id) ? { ...l, overrides: { ...l.overrides, [id]: { ...l.overrides[id], hidden: true } } } : { ...l, extra: l.extra.filter(e => e.id !== id) }); if (selEl === id) setSelEl(null); };
+  // Ajout d'un bloc de texte libre, déplaçable / redimensionnable / supprimable.
+  const addTextBlock = () => { if (!current) return; const e: El = { id: 't' + uid(), kind: 'text', text: 'Nouveau texte', x: 18, y: 45, w: 64, size: 0.05, font: SYS, color: '#21392B', weight: 700, align: 'center', rot: 0, removable: true }; updateLabel(current.id, l => ({ ...l, extra: [...l.extra, e] })); setSelEl(e.id); };
+  // Réaffiche tous les blocs du modèle qui avaient été masqués.
+  const restoreHidden = () => { if (!current) return; updateLabel(current.id, l => { const ov: Record<string, Partial<El>> = {}; for (const [k, v] of Object.entries(l.overrides)) { const r = { ...v }; delete r.hidden; ov[k] = r; } return { ...l, overrides: ov }; }); };
+  const hiddenCount = current ? Object.values(current.overrides).filter(o => o.hidden).length : 0;
   const changeType = (t: PromoType) => { if (current) { updateLabel(current.id, l => ({ ...l, type: t, overrides: {} })); setSelEl(null); } };
   const setAccent = (c: string) => { if (current) updateLabel(current.id, l => ({ ...l, accent: c })); };
   const setBg = (c: string) => { if (current) updateLabel(current.id, l => ({ ...l, bg: c })); };
@@ -900,6 +912,12 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                 </Field>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}><SectionTitle>Contenu</SectionTitle><ContentForm l={current} set={setData} /></div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}><SectionTitle>Couleurs</SectionTitle><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><ColorRow label="Cercle / accent" value={current.accent} onChange={setAccent} /><ColorRow label="Fond" value={current.bg} onChange={setBg} /></div></div>
+                <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
+                  <SectionTitle>Blocs</SectionTitle>
+                  <button onClick={addTextBlock} style={{ width: '100%', padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 800, marginBottom: 8 }}>＋ Bloc de texte</button>
+                  {hiddenCount > 0 && <button onClick={restoreHidden} style={{ width: '100%', padding: '7px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>↺ Réafficher {hiddenCount} bloc{hiddenCount > 1 ? 's' : ''} masqué{hiddenCount > 1 ? 's' : ''}</button>}
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>Cliquez un bloc pour le déplacer, le redimensionner (taille de police) ou le supprimer (× rouge). Les blocs du modèle masqués sont récupérables ci-dessus.</div>
+                </div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
                   <SectionTitle>Logo marque & pictos</SectionTitle>
                   <label style={{ ...inp, cursor: 'pointer', textAlign: 'center', display: 'block', marginBottom: 10 }}>⬆ Logo de marque / labo<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && uploadBrandLogo(e.target.files[0])} /></label>
