@@ -43,6 +43,7 @@ interface Project {
   pharmacy: string; plan: string; logo: string | null; disclaimer: string;
   pageFormat: string; labelWmm: number; labelHmm: number;
   printPaper?: string; printMarginMm?: number; theme?: string;
+  dateStart?: string; dateEnd?: string;
   labels: Label[]; updatedAt?: number;
 }
 
@@ -53,7 +54,7 @@ const PAPERS: Record<string, { name: string; w: number; h: number }> = {
 };
 
 interface Meta { id: string; pharmacy: string; plan: string; updatedAt: number; }
-interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; aspect?: number; theme?: string; }
+interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; aspect?: number; theme?: string; dateStart?: string; dateEnd?: string; }
 
 // ──────────────────────────────────────────────────────────────────────
 //  DIRECTION ARTISTIQUE
@@ -181,8 +182,10 @@ function migrate(p: Project): Project {
 
 const B = { font: SYS, rot: 0 };
 
-function dateText(d: LabelData): string | null {
-  const { dateStart: s, dateEnd: e } = d;
+function dateText(d: LabelData, o?: SeedOpts): string | null {
+  // Dates de l'étiquette, sinon période globale de la planche.
+  const s = d.dateStart || o?.dateStart || '';
+  const e = d.dateEnd || o?.dateEnd || '';
   if (s && e) return `Offre valable du ${s} au ${e}`;
   if (s) return `Offre valable dès le ${s}`;
   if (e) return `Offre valable jusqu'au ${e}`;
@@ -192,7 +195,7 @@ function dateText(d: LabelData): string | null {
 // pieds (date, mentions, logo) — positions portrait / réglette
 function footEls(l: Label, o: SeedOpts): El[] {
   const out: El[] = [];
-  const dt = dateText(l.data);
+  const dt = dateText(l.data, o);
   // coordonnées de la zone logo + pied selon orientation
   const lx = o.landscape ? 88 : 6, ly = o.landscape ? 80 : 84, lw = o.landscape ? 10 : 17;
   if (!o.small) {
@@ -223,7 +226,7 @@ function offiHeader(d: LabelData, asp: number): El[] {
 }
 function offiFooter(l: Label, o: SeedOpts): El[] {
   const out: El[] = [];
-  const dt = dateText(l.data);
+  const dt = dateText(l.data, o);
   // Petits formats (rayon / petite) : on retire validité + mentions pour rester lisible.
   if (!o.small) out.push({ ...B, id: 'urgency', kind: 'text', text: dt || 'Offre dans la limite des stocks disponibles', x: 12, y: 90, w: 76, size: 0.02, color: OFFI.green, weight: 700, align: 'center', track: 0.02 });
   if (!o.small && o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 8, y: 95.5, w: 84, size: 0.013, color: OFFI.muted, weight: 400, align: 'center' });
@@ -610,7 +613,7 @@ const sizeOf = (l: Label, p: Project) => ({ w: l.wMm ?? p.labelWmm, h: l.hMm ?? 
 // Options de composition (orientation, format…) calculées pour CETTE étiquette.
 const optsFor = (l: Label, p: Project, editing: boolean): SeedOpts => {
   const { w, h } = sizeOf(l, p);
-  return { landscape: w > h * 1.5, logo: p.logo, disclaimer: p.disclaimer, editing, small: Math.min(w, h) < 80, aspect: w / h, theme: p.theme || 'promo' };
+  return { landscape: w > h * 1.5, logo: p.logo, disclaimer: p.disclaimer, editing, small: Math.min(w, h) < 80, aspect: w / h, theme: p.theme || 'promo', dateStart: p.dateStart, dateEnd: p.dateEnd };
 };
 
 function layout(p: Project) {
@@ -984,6 +987,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
   const [hasHeader, setHasHeader] = useState(true);
   const [mapping, setMapping] = useState<Record<string, number>>({});
   const [formatCol, setFormatCol] = useState(-1);
+  const [excluded, setExcluded] = useState<Set<number>>(new Set());
   const [fileName, setFileName] = useState('');
   const [error, setError] = useState('');
   const fields = IMPORT_FIELDS[type];
@@ -995,6 +999,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
     setMapping(autoMap(IMPORT_FIELDS[type], rows[0] || [], hasHeader, hasHeader ? rows.slice(1) : rows));
     // détecte la colonne « Format » par son en-tête
     setFormatCol(hasHeader ? (rows[0] || []).findIndex(h => FORMAT_KW.test(h)) : -1);
+    setExcluded(new Set()); // tout coché par défaut
   }, [rows, type, hasHeader]);
 
   // Empile les tableaux côte à côte en une seule liste, puis détecte l'en-tête.
@@ -1028,9 +1033,13 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
   const fmtCounts: Record<string, number> = {};
   if (formatCol >= 0) for (const { r } of prepared) { const f = matchFormat(r[formatCol] || ''); if (f) fmtCounts[f.id] = (fmtCounts[f.id] || 0) + 1; }
   const domFmt = FORMATS.find(f => f.id === (Object.entries(fmtCounts).sort((a, b) => b[1] - a[1])[0]?.[0])) || null;
+  const selected = prepared.filter((_, i) => !excluded.has(i));
+  const selectedCount = selected.length;
+  const toggleRow = (i: number) => setExcluded(s => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  const toggleAll = () => setExcluded(s => (s.size === 0 ? new Set(prepared.map((_, i) => i)) : new Set()));
   const build = () => {
-    if (!validCount) { setError('Aucune ligne avec un prix valide (vérifiez le mappage des colonnes).'); return; }
-    const labels = prepared.map(({ d, r }) => {
+    if (!selectedCount) { setError('Cochez au moins un produit à générer.'); return; }
+    const labels = selected.map(({ d, r }) => {
       if (!d.category) d.category = 'PROMOTION';
       const f = formatCol >= 0 ? matchFormat(r[formatCol] || '') : null;
       return newLabel(type, d, f ? { w: f.w, h: f.h } : undefined);
@@ -1091,24 +1100,30 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
           </div>
           <div style={{ fontSize: 11, color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>📐 La colonne « Format » règle la taille <strong style={{ color: '#cbd5e1' }}>de chaque étiquette</strong> individuellement. Formats reconnus : <strong style={{ color: '#cbd5e1' }}>{FORMATS_LEGEND}</strong>.{domFmt && <span style={{ color: '#86efac' }}> (principal détecté : {domFmt.name})</span>}</div>
 
-          <SectionTitle>Aperçu</SectionTitle>
-          <div style={{ overflow: 'auto', border: '1px solid #1e293b', borderRadius: 6, marginBottom: 14 }}>
-            <table style={{ borderCollapse: 'collapse', fontSize: 11, width: '100%' }}>
-              <tbody>
-                {body.slice(0, 4).map((r, ri) => (
-                  <tr key={ri}>{Array.from({ length: ncols }).map((_, ci) => {
-                    const mapped = fields.find(f => mapping[f.key] === ci);
-                    return <td key={ci} style={{ border: '1px solid #1e293b', padding: '4px 7px', whiteSpace: 'nowrap', color: mapped ? '#e2e8f0' : '#64748b', background: mapped ? '#16a34a18' : 'transparent', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r[ci] || ''}</td>;
-                  })}</tr>
-                ))}
-              </tbody>
-            </table>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <SectionTitle>Produits à générer ({selectedCount}/{validCount})</SectionTitle>
+            {validCount > 0 && <button onClick={toggleAll} style={{ marginLeft: 'auto', marginBottom: 10, padding: '4px 10px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{excluded.size === 0 ? 'Tout décocher' : 'Tout cocher'}</button>}
+          </div>
+          <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #1e293b', borderRadius: 6, marginBottom: 14 }}>
+            {prepared.map(({ d, r }, i) => {
+              const on = !excluded.has(i);
+              const price = (PRICE_KEYS[type].map(k => (d as Record<string, string>)[k]).find(v => v) || '');
+              const fmt = formatCol >= 0 ? matchFormat(r[formatCol] || '') : null;
+              return (
+                <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid #1e293b', cursor: 'pointer', background: on ? 'transparent' : '#0b1220', opacity: on ? 1 : 0.5 }}>
+                  <input type="checkbox" checked={on} onChange={() => toggleRow(i)} />
+                  <span style={{ flex: 1, fontSize: 12, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.product}</span>
+                  <span style={{ fontSize: 12, color: '#86efac', fontWeight: 700 }}>{price} €</span>
+                  {fmt && <span style={{ fontSize: 10, color: '#64748b' }}>{fmt.name}</span>}
+                </label>
+              );
+            })}
           </div>
         </>}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '9px 16px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Annuler</button>
-          <button onClick={build} disabled={!validCount} style={{ padding: '9px 20px', background: validCount ? '#16a34a' : '#334155', color: '#fff', border: 'none', borderRadius: 7, cursor: validCount ? 'pointer' : 'default', fontSize: 13, fontWeight: 800 }}>Générer {validCount || ''} étiquette{validCount > 1 ? 's' : ''}</button>
+          <button onClick={build} disabled={!selectedCount} style={{ padding: '9px 20px', background: selectedCount ? '#16a34a' : '#334155', color: '#fff', border: 'none', borderRadius: 7, cursor: selectedCount ? 'pointer' : 'default', fontSize: 13, fontWeight: 800 }}>Générer {selectedCount || ''} étiquette{selectedCount > 1 ? 's' : ''}</button>
         </div>
       </div>
     </div>
@@ -1220,7 +1235,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   // Changement de style : on repart des positions par défaut (compositions différentes).
   const setTheme = (t: string) => setProject(p => p.theme === t ? p : ({ ...p, theme: t, labels: p.labels.map(l => ({ ...l, overrides: {} })) }));
   const current = project.labels.find(l => l.id === selLabel) || null;
-  const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true, small: L.small, aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo' };
+  const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true, small: L.small, aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo', dateStart: project.dateStart, dateEnd: project.dateEnd };
   const currentEl: El | null = current && selEl ? resolveEls(current, seedOpts).find(e => e.id === selEl) || null : null;
   const overflow = project.labels.length > L.capacity;
 
@@ -1354,6 +1369,13 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                 </Field>
                 <LogoLibrary logos={logos} onSave={onSaveLogo} onDelete={onDeleteLogo} onPick={src => setProject(p => ({ ...p, logo: src }))} />
                 {project.logo && <button onClick={() => onSaveLogo('Logo', project.logo!)} style={{ ...inp, cursor: 'pointer', textAlign: 'center', display: 'block', marginBottom: 10, color: '#cbd5e1' }}>💾 Enregistrer le logo actuel dans la bibliothèque</button>}
+                <Field label="Période de promotion (toutes les étiquettes)">
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <input value={project.dateStart || ''} onChange={e => setProject(p => ({ ...p, dateStart: e.target.value }))} placeholder="du 01/06/2026" style={inp} />
+                    <input value={project.dateEnd || ''} onChange={e => setProject(p => ({ ...p, dateEnd: e.target.value }))} placeholder="au 30/06/2026" style={inp} />
+                  </div>
+                  <div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>S&apos;affiche en bas de chaque étiquette (sauf si une étiquette a ses propres dates).</div>
+                </Field>
                 <Field label="Mentions légales (bas d'étiquette)"><textarea value={project.disclaimer} onChange={e => setProject(p => ({ ...p, disclaimer: e.target.value }))} rows={2} style={{ ...inp, resize: 'none' }} /></Field>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}>
                   <SectionTitle>Dimensions des étiquettes</SectionTitle>
