@@ -1280,6 +1280,9 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const addLabel = () => { const t = current?.type || 'prix-promo'; const nl = newLabel(t); setProject(p => ({ ...p, labels: [...p.labels, nl] })); setSelLabel(nl.id); setSelEl(null); };
   const duplicateLabel = () => { if (!current) return; const copy: Label = { ...current, id: uid(), overrides: { ...current.overrides }, extra: current.extra.map(e => ({ ...e })) }; setProject(p => ({ ...p, labels: [...p.labels, copy] })); setSelLabel(copy.id); };
   const deleteLabel = () => { if (!current) return; setProject(p => ({ ...p, labels: p.labels.filter(l => l.id !== current.id) })); setSelLabel(null); setSelEl(null); };
+  // Réordonne l'étiquette sélectionnée (ordre = ordre d'impression).
+  const moveLabel = (dir: -1 | 1) => { if (!current) return; setProject(p => { const i = p.labels.findIndex(l => l.id === current.id); const j = i + dir; if (i < 0 || j < 0 || j >= p.labels.length) return p; const ls = p.labels.slice(); [ls[i], ls[j]] = [ls[j], ls[i]]; return { ...p, labels: ls }; }); };
+  const labelIndex = current ? project.labels.findIndex(l => l.id === current.id) : -1;
   const addBadge = (t: string, bg: string) => { if (!current) return; const e: El = { id: 'b' + uid(), kind: 'pill', text: t, x: 8, y: 8, size: 0.045, font: SYS, color: '#fff', bg, weight: 900, align: 'center', rot: -8, radius: 6, removable: true }; updateLabel(current.id, l => ({ ...l, extra: [...l.extra, e] })); setSelEl(e.id); };
   const addBrandLogoSrc = (src: string) => { if (!current) return; const e: El = { id: 'logo' + uid(), kind: 'image', src, x: 66, y: 6, w: 22, size: 0, font: SYS, color: '#000', weight: 400, align: 'left', rot: 0, removable: true }; updateLabel(current.id, l => ({ ...l, extra: [...l.extra, e] })); setSelEl(e.id); };
   const uploadBrandLogo = (file: File) => { const r = new FileReader(); r.onload = () => addBrandLogoSrc(r.result as string); r.readAsDataURL(file); };
@@ -1447,9 +1450,17 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{BADGES.map(b => <button key={b.t} onClick={() => addBadge(b.t, b.bg)} style={{ padding: '4px 8px', background: b.bg, color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 9.5, fontWeight: 800 }}>{b.t}</button>)}</div>
                 </div>
                 {currentEl && <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 4 }}><SectionTitle>✦ Élément : {currentEl.kind === 'image' ? 'logo / image' : (currentEl.text ? `« ${currentEl.text.slice(0, 18)} »` : currentEl.kind)}</SectionTitle><ElementEditor el={currentEl} patch={patchEl} /><button onClick={() => delEl(currentEl.id)} style={{ width: '100%', padding: '8px', marginTop: 8, background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>🗑 Supprimer ce bloc</button></div>}
-                <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6, display: 'flex', gap: 8 }}>
-                  <button onClick={duplicateLabel} style={{ flex: 1, padding: '8px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>⧉ Dupliquer</button>
-                  <button onClick={deleteLabel} style={{ flex: 1, padding: '8px', background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>🗑 Supprimer</button>
+                <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}>
+                  <Field label={`Ordre d'impression — position ${labelIndex + 1} / ${project.labels.length}`}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => moveLabel(-1)} disabled={labelIndex <= 0} style={{ flex: 1, padding: '7px', background: '#1e293b', color: labelIndex <= 0 ? '#475569' : '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: labelIndex <= 0 ? 'default' : 'pointer', fontSize: 12, fontWeight: 700 }}>◀ Avancer</button>
+                      <button onClick={() => moveLabel(1)} disabled={labelIndex < 0 || labelIndex >= project.labels.length - 1} style={{ flex: 1, padding: '7px', background: '#1e293b', color: labelIndex >= project.labels.length - 1 ? '#475569' : '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: labelIndex >= project.labels.length - 1 ? 'default' : 'pointer', fontSize: 12, fontWeight: 700 }}>Reculer ▶</button>
+                    </div>
+                  </Field>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={duplicateLabel} style={{ flex: 1, padding: '8px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>⧉ Dupliquer</button>
+                    <button onClick={deleteLabel} style={{ flex: 1, padding: '8px', background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>🗑 Supprimer</button>
+                  </div>
                 </div>
               </>
             )}
@@ -1545,7 +1556,7 @@ function PrintPreviewModal({ project, setProject, onClose }: { project: Project;
 //  BIBLIOTHÈQUE + LOGIN + ORCHESTRATION
 // ──────────────────────────────────────────────────────────────────────
 
-function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onExport, onImport, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onRename: (id: string, pharmacy: string, plan: string) => void; onExport: () => void; onImport: (file: File) => void; onLogout: () => void; }) {
+function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onDuplicate, onExport, onImport, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onRename: (id: string, pharmacy: string, plan: string) => void; onDuplicate: (id: string) => void; onExport: () => void; onImport: (file: File) => void; onLogout: () => void; }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
   const [draftPlan, setDraftPlan] = useState('');
@@ -1591,6 +1602,7 @@ function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onExport, onI
                     <span style={{ fontSize: 10, color: '#475569' }}>{m.updatedAt ? new Date(m.updatedAt).toLocaleDateString('fr-FR') : ''}</span>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={e => { e.stopPropagation(); startEdit(m); }} title="Renommer" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13 }}>✏️</button>
+                      <button onClick={e => { e.stopPropagation(); onDuplicate(m.id); }} title="Dupliquer la planche" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13 }}>⧉</button>
                       <button onClick={e => { e.stopPropagation(); if (confirm('Supprimer cette planche ?')) onDelete(m.id); }} title="Supprimer" style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 13 }}>🗑</button>
                     </div>
                   </div>
@@ -1662,6 +1674,7 @@ export default function Home() {
   const newPlanche = async () => { const id = await store.create(defaultProject()); await openPlanche(id); refreshList(store); };
   const deletePlanche = async (id: string) => { await store.remove(id); refreshList(store); };
   const renamePlanche = async (id: string, pharmacy: string, plan: string) => { const p = await store.get(id); if (!p) return; await store.save(id, { ...p, pharmacy, plan }); refreshList(store); };
+  const duplicatePlanche = async (id: string) => { const p = await store.get(id); if (!p) return; await store.create({ ...p, pharmacy: `${p.pharmacy} (copie)` }); refreshList(store); };
 
   // Bibliothèque de logos (cloud si configuré, sinon local)
   const logoStore = mode === 'server' ? serverLogos : localLogos;
@@ -1738,5 +1751,5 @@ export default function Home() {
   if (view === 'loading') return <div style={{ minHeight: '100vh', background: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontFamily: SYS }}>Chargement…</div>;
   if (view === 'login') return <Login onSubmit={doLogin} error={loginErr} />;
   if (view === 'studio' && project) return <Studio project={project} setProject={setProject} onBack={backToLibrary} saving={saving} mode={mode} undo={undo} redo={redo} canUndo={past.current.length > 0} canRedo={future.current.length > 0} logos={logos} onSaveLogo={saveLogo} onDeleteLogo={deleteLogo} />;
-  return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onRename={renamePlanche} onExport={exportAll} onImport={importBackup} onLogout={logout} />;
+  return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onRename={renamePlanche} onDuplicate={duplicatePlanche} onExport={exportAll} onImport={importBackup} onLogout={logout} />;
 }
