@@ -75,3 +75,32 @@ export function chunk<T>(arr: T[], n: number): T[][] {
   for (let i = 0; i < arr.length; i += Math.max(1, n)) out.push(arr.slice(i, i + n));
   return out;
 }
+
+/**
+ * Empile les tableaux disposés côte à côte (séparés par des colonnes vides) en
+ * un seul tableau vertical, pour gérer les feuilles « 2 listes l'une à côté de
+ * l'autre ». Si un seul bloc est détecté, renvoie les lignes inchangées.
+ */
+export function stackColumnBlocks(rows: string[][]): string[][] {
+  if (rows.length < 2) return rows;
+  const ncols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  if (ncols < 4) return rows;
+  const norm = rows.map(r => { const c = r.slice(); while (c.length < ncols) c.push(''); return c; });
+  const colEmpty = (c: number) => norm.every(r => !(r[c] || '').trim());
+  const blocks: [number, number][] = [];
+  let start = -1;
+  for (let c = 0; c < ncols; c++) {
+    if (!colEmpty(c)) { if (start < 0) start = c; }
+    else if (start >= 0) { blocks.push([start, c]); start = -1; }
+  }
+  if (start >= 0) blocks.push([start, ncols]);
+  const maxW = Math.max(...blocks.map(([a, b]) => b - a), 0);
+  const keep = blocks.filter(([a, b]) => b - a >= maxW - 1 && b - a >= 3);
+  if (keep.length < 2) return rows;
+  const out: string[][] = [];
+  for (const [a, b] of keep) for (const r of norm) {
+    const sub = r.slice(a, b);
+    if (sub.some(c => (c || '').trim())) out.push(sub);
+  }
+  return out;
+}

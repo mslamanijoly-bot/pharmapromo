@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, CSSProperties } from 'react';
-import { MM, pf, ff, fitSize, priceParts, parseTable, paginate, chunk } from '@/lib/calc';
+import { MM, pf, ff, fitSize, priceParts, parseTable, paginate, chunk, stackColumnBlocks } from '@/lib/calc';
 
 /* ════════════════════════════════════════════════════════════════════
    PHARMAPROMO STUDIO
@@ -765,7 +765,7 @@ const F_PROD: ImpField = { key: 'product', label: 'Produit', kw: /produit|nom|li
 const F_QTY: ImpField = { key: 'qtyLabel', label: 'Descriptif', kw: /descript|quantit|format|conditionn|contenance|lot|g[eé]lul|capsul|comprim/i };
 const IMPORT_FIELDS: Record<PromoType, ImpField[]> = {
   'prix-promo': [F_CAT, F_PROD,
-    { key: 'normalPrice', label: 'Prix normal €', kw: /normal|barr|public|ancien|avant|initial/i },
+    { key: 'normalPrice', label: 'Prix normal €', kw: /normal|barr|public|ancien|avant|initial|vente|courant|fort/i },
     { key: 'promoPrice', label: 'Prix promo €', kw: /promo|nouveau|apr[eè]s|remis|r[eé]duit|net/i }, F_QTY],
   'bon-reduction': [F_CAT, F_PROD,
     { key: 'couponValue', label: 'Valeur bon €', kw: /valeur|bon|montant/i },
@@ -871,15 +871,31 @@ function detectHeader(rows: string[][]): boolean {
   const r = rows[0] || [];
   return r.some(c => /produit|cat[eé]gorie|nom|prix|valeur|qt|descript|marque|libell|rayon/i.test(c));
 }
-function autoMap(fields: ImpField[], header: string[], hasHeader: boolean): Record<string, number> {
+const isNumericish = (s: string) => { const t = (s || '').trim(); return !!t && /^[\d\s.,€%+/-]+$/.test(t); };
+function autoMap(fields: ImpField[], header: string[], hasHeader: boolean, body: string[][]): Record<string, number> {
+  const ncols = Math.max(header.length, body.reduce((m, r) => Math.max(m, r.length), 0));
   const used = new Set<number>(); const map: Record<string, number> = {};
-  fields.forEach((f, idx) => {
-    let col = -1;
-    if (hasHeader) col = header.findIndex((h, i) => !used.has(i) && f.kw.test(h));
-    if (col < 0) col = (idx < header.length && !used.has(idx)) ? idx : -1;
-    if (col >= 0) used.add(col);
-    map[f.key] = col;
+  fields.forEach(f => { map[f.key] = -1; });
+  // 1) correspondance par mot-clé sur les en-têtes (prioritaire et globale)
+  if (hasHeader) fields.forEach(f => {
+    const col = header.findIndex((h, i) => !used.has(i) && f.kw.test(h));
+    if (col >= 0) { map[f.key] = col; used.add(col); }
   });
+  // 2) produit non trouvé : on prend la colonne la plus « texte » (noms longs, peu de chiffres)
+  if (map.product === -1 && fields.some(f => f.key === 'product')) {
+    let best = -1, bestScore = 3;
+    for (let c = 0; c < ncols; c++) {
+      if (used.has(c)) continue;
+      let sum = 0, n = 0;
+      for (const r of body) { const v = (r[c] || '').trim(); if (!v) continue; n++; sum += isNumericish(v) ? 0 : v.length; }
+      const avg = n ? sum / n : 0;
+      if (avg > bestScore) { bestScore = avg; best = c; }
+    }
+    if (best >= 0) { map.product = best; used.add(best); }
+  }
+  // 3) repli positionnel seulement si l'en-tête n'a quasi rien donné (fichiers bruts)
+  if (Object.values(map).filter(v => v >= 0).length >= 2) return map;
+  fields.forEach((f, idx) => { if (map[f.key] < 0 && idx < ncols && !used.has(idx)) { map[f.key] = idx; used.add(idx); } });
   return map;
 }
 
@@ -895,10 +911,11 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
 
   // (re)calcule le mappage auto à chaque changement de données / type / en-tête
   useEffect(() => {
-    if (rows.length) setMapping(autoMap(IMPORT_FIELDS[type], rows[0] || [], hasHeader));
+    if (rows.length) setMapping(autoMap(IMPORT_FIELDS[type], rows[0] || [], hasHeader, hasHeader ? rows.slice(1) : rows));
   }, [rows, type, hasHeader]);
 
-  const loadRows = (rws: string[][]) => { setRows(rws); setHasHeader(detectHeader(rws)); setError(rws.length ? '' : 'Aucune donnée détectée.'); };
+  // Empile les tableaux côte à côte en une seule liste, puis détecte l'en-tête.
+  const loadRows = (rws: string[][]) => { const s = stackColumnBlocks(rws); setRows(s); setHasHeader(detectHeader(s)); setError(s.length ? '' : 'Aucune donnée détectée.'); };
   const onText = (txt: string) => loadRows(parseTable(txt));
   const onFile = async (f: File) => {
     setFileName(f.name); setError('');
@@ -908,15 +925,25 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
 
   const colLabel = (i: number) => (hasHeader && rows[0]?.[i]?.trim()) ? rows[0][i] : `Colonne ${i + 1}`;
   const body = hasHeader ? rows.slice(1) : rows;
+  // Colonnes « prix » par type : une ligne ne devient une étiquette que si l'une
+  // d'elles contient un montant > 0 (→ les lignes « Bateau », titres et vides disparaissent).
+  const PRICE_KEYS: Record<PromoType, (keyof LabelData)[]> = {
+    'prix-promo': ['promoPrice', 'normalPrice'],
+    'bon-reduction': ['couponValue'],
+    'remise-lot': ['lotPrice'],
+    'multi-achat': ['t1p', 't2p', 't3p'],
+  };
+  // Lignes retenues = produit non vide + au moins un prix valide (le reste est ignoré).
+  const prepared = body.map(r => {
+    const d: Partial<LabelData> = {};
+    fields.forEach(f => { const c = mapping[f.key]; if (c >= 0 && r[c] != null && r[c] !== '') (d as Record<string, string>)[f.key] = r[c]; });
+    if (!d.product) d.product = (mapping.product >= 0 ? r[mapping.product] : r[0]) || '';
+    return d;
+  }).filter(d => (d.product || '').trim() && PRICE_KEYS[type].some(k => pf((d as Record<string, string>)[k] || '') > 0));
+  const validCount = prepared.length;
   const build = () => {
-    const labels = body.filter(r => (mapping.product >= 0 ? r[mapping.product] : r[0] || '').trim()).map(r => {
-      const d: Partial<LabelData> = {};
-      fields.forEach(f => { const c = mapping[f.key]; if (c >= 0 && r[c] != null && r[c] !== '') (d as Record<string, string>)[f.key] = r[c]; });
-      if (!d.product) d.product = r[0] || 'Produit';
-      if (!d.category) d.category = 'PROMOTION';
-      return newLabel(type, d);
-    });
-    if (labels.length) onImport(labels);
+    if (!validCount) { setError('Aucune ligne avec un prix valide (vérifiez le mappage des colonnes).'); return; }
+    onImport(prepared.map(d => { if (!d.category) d.category = 'PROMOTION'; return newLabel(type, d); }));
   };
 
   const example = 'Catégorie;Produit;Prix normal;Prix promo;Descriptif\nCOMPLÉMENT ALIMENTAIRE;Chondro-haid Fort ARKOPHARMA;31,90;26,90;Lot de 3 x 60 gélules*';
@@ -940,7 +967,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
             <input type="file" accept=".xlsx,.xls,.csv,text/csv,text/plain" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && onFile(e.target.files[0])} />
           </label>
         </div>
-        {fileName && <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>📄 {fileName} — {body.length} ligne(s) de données</div>}
+        {fileName && <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>📄 {fileName} — {validCount} produit(s) avec prix détecté(s) sur {body.length} ligne(s)</div>}
 
         <Field label="…ou coller depuis Excel (Ctrl+V)"><textarea placeholder={example} rows={3} onChange={e => onText(e.target.value)} style={{ ...inp, resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5 }} /></Field>
 
@@ -981,7 +1008,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '9px 16px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Annuler</button>
-          <button onClick={build} disabled={!body.length} style={{ padding: '9px 20px', background: body.length ? '#16a34a' : '#334155', color: '#fff', border: 'none', borderRadius: 7, cursor: body.length ? 'pointer' : 'default', fontSize: 13, fontWeight: 800 }}>Générer {body.length || ''} étiquette{body.length > 1 ? 's' : ''}</button>
+          <button onClick={build} disabled={!validCount} style={{ padding: '9px 20px', background: validCount ? '#16a34a' : '#334155', color: '#fff', border: 'none', borderRadius: 7, cursor: validCount ? 'pointer' : 'default', fontSize: 13, fontWeight: 800 }}>Générer {validCount || ''} étiquette{validCount > 1 ? 's' : ''}</button>
         </div>
       </div>
     </div>

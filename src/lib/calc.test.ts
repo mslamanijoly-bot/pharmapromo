@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { pf, ff, fitSize, priceParts, paginate, parseTable, chunk } from './calc';
+import { pf, ff, fitSize, priceParts, paginate, parseTable, chunk, stackColumnBlocks } from './calc';
+
+describe('stackColumnBlocks', () => {
+  it('empile deux tableaux côte à côte séparés par une colonne vide', () => {
+    const rows = [
+      ['juin-26', 'Prix Promo', 'Prix Vente', 'baisse', '', 'juin-26', 'Prix Promo', 'Prix Vente', 'baisse'],
+      ['Bateau 1', '', '', '', '', 'Bateau 1', '', '', ''],
+      ['Sporteine', '9,95', '11,95', '2,00', '', 'GHA gel', '9,98', '10,98', '1,00'],
+    ];
+    const out = stackColumnBlocks(rows);
+    expect(out.length).toBe(6); // 3 lignes gauche + 3 lignes droite
+    expect(out[0]).toEqual(['juin-26', 'Prix Promo', 'Prix Vente', 'baisse']);
+    expect(out[2]).toEqual(['Sporteine', '9,95', '11,95', '2,00']);
+    expect(out[5]).toEqual(['GHA gel', '9,98', '10,98', '1,00']);
+  });
+  it('laisse un tableau simple inchangé', () => {
+    const rows = [['Produit', 'Prix'], ['Doliprane', '2,90']];
+    expect(stackColumnBlocks(rows)).toEqual(rows);
+  });
+});
 
 describe('pf / ff', () => {
   it('parse les prix français', () => {
