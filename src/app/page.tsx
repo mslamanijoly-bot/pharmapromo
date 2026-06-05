@@ -1586,7 +1586,8 @@ function PrintPreviewModal({ project, setProject, onClose }: { project: Project;
 //  BIBLIOTHÈQUE + LOGIN + ORCHESTRATION
 // ──────────────────────────────────────────────────────────────────────
 
-function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onDuplicate, onDeleteMany, onExport, onImport, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onRename: (id: string, pharmacy: string, plan: string) => void; onDuplicate: (id: string) => void; onDeleteMany: (ids: string[]) => void; onExport: () => void; onImport: (file: File) => void; onLogout: () => void; }) {
+function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onDuplicate, onDeleteMany, trash, onRestore, onPurge, onEmptyTrash, onExport, onImport, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onRename: (id: string, pharmacy: string, plan: string) => void; onDuplicate: (id: string) => void; onDeleteMany: (ids: string[]) => void; trash: TrashItem[]; onRestore: (t: TrashItem) => void; onPurge: (id: string) => void; onEmptyTrash: () => void; onExport: () => void; onImport: (file: File) => void; onLogout: () => void; }) {
+  const [showTrash, setShowTrash] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
   const [draftPlan, setDraftPlan] = useState('');
@@ -1610,8 +1611,28 @@ function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onDuplicate, 
           <label title="Restaurer des planches depuis un fichier de sauvegarde (.json)" style={{ padding: '10px 14px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>⬆ Restaurer<input type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) { onImport(e.target.files[0]); e.target.value = ''; } }} /></label>
           {sel.size > 0 && <button onClick={deleteSelected} style={{ padding: '10px 14px', background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 800 }}>🗑 Supprimer ({sel.size})</button>}
           {sel.size > 0 && <button onClick={() => setSel(new Set())} style={{ padding: '10px 12px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Annuler</button>}
+          <button onClick={() => setShowTrash(t => !t)} title="Corbeille (récupérable 30 jours)" style={{ padding: '10px 14px', background: showTrash ? '#7f1d1d' : '#1e293b', color: showTrash ? '#fff' : '#cbd5e1', border: '1px solid #334155', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>🗑 Corbeille{trash.length ? ` (${trash.length})` : ''}</button>
           <button onClick={onNew} style={{ padding: '10px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 800, boxShadow: '0 2px 12px #16a34a55' }}>＋ Nouvelle planche</button>
         </div>
+        {showTrash && (
+          <div style={{ marginBottom: 20, padding: 16, background: '#0f172a', border: '1px solid #7f1d1d', borderRadius: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, gap: 10 }}>
+              <SectionTitle>Corbeille — {trash.length} planche{trash.length > 1 ? 's' : ''}</SectionTitle>
+              {trash.length > 0 && <button onClick={() => { if (confirm('Vider définitivement la corbeille ?')) onEmptyTrash(); }} style={{ marginLeft: 'auto', padding: '6px 12px', background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Vider la corbeille</button>}
+            </div>
+            {trash.length === 0 ? <div style={{ fontSize: 12, color: '#64748b' }}>Vide. Les planches supprimées arrivent ici (récupérables 30 jours).</div> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {trash.map(t => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0b1220', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 12px' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.project.pharmacy}</div><div style={{ fontSize: 11, color: '#64748b' }}>{t.project.plan} · supprimée le {new Date(t.deletedAt).toLocaleDateString('fr-FR')}</div></div>
+                    <button onClick={() => onRestore(t)} style={{ padding: '6px 12px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>↩ Restaurer</button>
+                    <button onClick={() => { if (confirm('Supprimer définitivement cette planche ?')) onPurge(t.id); }} title="Supprimer définitivement" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 14 }}>🗑</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {metas.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#475569', border: '2px dashed #1e293b', borderRadius: 12 }}>Aucune planche. Cliquez <strong style={{ color: '#94a3b8' }}>Nouvelle planche</strong> pour démarrer.</div>
         ) : (
@@ -1670,8 +1691,16 @@ function Login({ onSubmit, error }: { onSubmit: (key: string) => void; error: st
 
 type View = 'loading' | 'login' | 'library' | 'studio';
 
+// Corbeille locale : planches supprimées récupérables 30 jours (par navigateur).
+interface TrashItem { id: string; deletedAt: number; project: Project }
+const TRASH_LS = 'pp:trash';
+const TRASH_MAX_AGE = 30 * 24 * 3600 * 1000;
+const readTrash = (): TrashItem[] => { try { return (JSON.parse(localStorage.getItem(TRASH_LS) || '[]') as TrashItem[]).filter(t => Date.now() - t.deletedAt < TRASH_MAX_AGE); } catch { return []; } };
+const writeTrash = (arr: TrashItem[]) => { try { localStorage.setItem(TRASH_LS, JSON.stringify(arr.slice(0, 50))); } catch { /* quota */ } };
+
 export default function Home() {
   const [view, setView] = useState<View>('loading');
+  const [trash, setTrash] = useState<TrashItem[]>([]);
   const [mode, setMode] = useState<'server' | 'local'>('local');
   const [store, setStore] = useState<Store>(() => localStore);
   const [metas, setMetas] = useState<Meta[]>([]);
@@ -1708,15 +1737,26 @@ export default function Home() {
   const logout = () => { localStorage.removeItem(KEY_LS); setView('login'); };
   const openPlanche = async (id: string) => { const p = await store.get(id); if (p) { const mp = migrate(p); setProjectState(mp); projectRef.current = mp; committed.current = mp; past.current = []; future.current = []; setHistVer(v => v + 1); setCurrentId(id); setSaving('Enregistré'); setView('studio'); } };
   const newPlanche = async () => { const id = await store.create(defaultProject()); await openPlanche(id); refreshList(store); };
-  const deletePlanche = async (id: string) => { await store.remove(id); refreshList(store); };
+  // Suppression = mise à la corbeille (récupérable) puis retrait du store.
+  const trashPlanches = async (ids: string[]) => {
+    const items: TrashItem[] = [];
+    for (const id of ids) { const p = await store.get(id); if (p) items.push({ id, deletedAt: Date.now(), project: p }); await store.remove(id); }
+    const next = [...items, ...readTrash().filter(t => !ids.includes(t.id))];
+    writeTrash(next); setTrash(next); refreshList(store);
+  };
+  const deletePlanche = (id: string) => trashPlanches([id]);
+  const deleteManyPlanches = (ids: string[]) => trashPlanches(ids);
+  const restorePlanche = async (item: TrashItem) => { await store.create(item.project); const next = readTrash().filter(t => t.id !== item.id); writeTrash(next); setTrash(next); refreshList(store); };
+  const purgeTrash = (id: string) => { const next = readTrash().filter(t => t.id !== id); writeTrash(next); setTrash(next); };
+  const emptyTrash = () => { writeTrash([]); setTrash([]); };
   const renamePlanche = async (id: string, pharmacy: string, plan: string) => { const p = await store.get(id); if (!p) return; await store.save(id, { ...p, pharmacy, plan }); refreshList(store); };
   const duplicatePlanche = async (id: string) => { const p = await store.get(id); if (!p) return; await store.create({ ...p, pharmacy: `${p.pharmacy} (copie)` }); refreshList(store); };
-  const deleteManyPlanches = async (ids: string[]) => { for (const id of ids) await store.remove(id); refreshList(store); };
 
   // Bibliothèque de logos (cloud si configuré, sinon local)
   const logoStore = mode === 'server' ? serverLogos : localLogos;
   const refreshLogos = useCallback(async () => { try { setLogos(await (mode === 'server' ? serverLogos : localLogos).list()); } catch { /* 401 */ } }, [mode]);
   useEffect(() => { if (view === 'library' || view === 'studio') refreshLogos(); }, [view, refreshLogos]);
+  useEffect(() => { setTrash(readTrash()); }, [view]);
   const saveLogo = async (name: string, src: string) => { try { setLogos(await logoStore.add(name, src)); } catch { /* ignore */ } };
   const deleteLogo = async (id: string) => { try { setLogos(await logoStore.remove(id)); } catch { /* ignore */ } };
 
@@ -1788,5 +1828,5 @@ export default function Home() {
   if (view === 'loading') return <div style={{ minHeight: '100vh', background: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontFamily: SYS }}>Chargement…</div>;
   if (view === 'login') return <Login onSubmit={doLogin} error={loginErr} />;
   if (view === 'studio' && project) return <Studio project={project} setProject={setProject} onBack={backToLibrary} saving={saving} mode={mode} undo={undo} redo={redo} canUndo={past.current.length > 0} canRedo={future.current.length > 0} logos={logos} onSaveLogo={saveLogo} onDeleteLogo={deleteLogo} />;
-  return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onRename={renamePlanche} onDuplicate={duplicatePlanche} onDeleteMany={deleteManyPlanches} onExport={exportAll} onImport={importBackup} onLogout={logout} />;
+  return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onRename={renamePlanche} onDuplicate={duplicatePlanche} onDeleteMany={deleteManyPlanches} trash={trash} onRestore={restorePlanche} onPurge={purgeTrash} onEmptyTrash={emptyTrash} onExport={exportAll} onImport={importBackup} onLogout={logout} />;
 }
