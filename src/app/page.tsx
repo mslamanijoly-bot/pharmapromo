@@ -77,8 +77,8 @@ const WATERMARK = (() => {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 })();
 
-// Style « Choc » : sombre + néon (look promo agressif haut de gamme)
-const CHOC = { bg: '#0E0E14', cat: '#FFE000', product: '#FFFFFF', price: '#FFE000', old: '#8A8F98', accent: '#FF2630', muted: '#7A828C' };
+// Style « Officine » : blanc + vert pharmacie — passe-partout, premium, économe à l'impression
+const OFFI = { bg: '#FFFFFF', green: '#0E7A4D', greenDark: '#0A5C3A', greenSoft: '#E7F2EC', ink: '#1C2B23', old: '#9AA7A0', muted: '#6B7B72', white: '#FFFFFF' };
 
 const TYPES: { id: PromoType; label: string; icon: string; color: string }[] = [
   { id: 'prix-promo',    label: 'Prix Promo',       icon: '🏷️', color: '#D81E27' },
@@ -163,7 +163,8 @@ function migrate(p: Project): Project {
   if (q.disclaimer == null) q.disclaimer = DISCLAIMER;
   if (!q.printPaper) q.printPaper = 'A4';
   if (q.printMarginMm == null) q.printMarginMm = 0;
-  // styles disponibles : « promo » (clair) et « choc » (sombre). Legacy → promo.
+  // styles disponibles : « promo » (jaune) et « officine » (blanc + vert). Legacy → promo.
+  if (q.theme === 'choc') q.theme = 'officine';
   if (!q.theme || q.theme === 'luxe' || q.theme === 'editorial' || q.theme === 'premium') q.theme = 'promo';
   q.labels = (q.labels || []).map(l => ({ ...l, data: { ...newData(), ...l.data } }));
   return q;
@@ -203,10 +204,10 @@ function footEls(l: Label, o: SeedOpts): El[] {
   return out;
 }
 
-// ── Style « Choc » : sombre + néon, prix géant, pastille −%, barre d'économie ──
+// ── Style « Officine » : blanc + vert pharmacie, sobre et premium, économe en encre ──
 // Un seul exemple : Prix Promo en portrait (le format phare A4). Les autres cas
 // retombent sur le style « Promo » classique.
-function chocPromoPortrait(l: Label, o: SeedOpts): El[] {
+function officinePromoPortrait(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 0.7;
   const { normal, intp, cents, remise, pct } = priceParts(d.normalPrice, d.promoPrice);
   const manual = (d.remiseManual || '').trim();
@@ -217,38 +218,41 @@ function chocPromoPortrait(l: Label, o: SeedOpts): El[] {
   const hasOld = normal > pf(d.promoPrice);
   const dt = dateText(d);
   const out: El[] = [
-    { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: CHOC.bg, size: 0, color: CHOC.bg, weight: 400, align: 'left' },
-    { ...B, id: 'accent', kind: 'box', x: 0, y: 0, w: 100, h: 1.4, bg: CHOC.accent, size: 0, color: CHOC.accent, weight: 400, align: 'left' },
-    { ...B, id: 'cat', kind: 'text', text: d.category, x: 6, y: 4, w: 88, size: fitSize(d.category, 0.86, asp, 0.03, 1, 0.016), color: CHOC.cat, weight: 800, align: 'center', track: 0.18 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 10, w: 88, size: fitSize(d.product, 0.86, asp, 0.072, 2, 0.04), color: CHOC.product, weight: 900, align: 'center' },
-    { ...B, id: 'chocTag', kind: 'text', text: 'PRIX CHOC', x: 0, y: 24, w: 100, size: 0.03, color: CHOC.accent, weight: 900, align: 'center', track: 0.22 },
+    { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: OFFI.bg, size: 0, color: OFFI.bg, weight: 400, align: 'left' },
+    // Bandeau vert (signal officine) + croix de pharmacie
+    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 8, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
+    { ...B, id: 'cross', kind: 'text', text: '✚', x: 4, y: 1.7, size: 0.038, color: OFFI.white, weight: 900, align: 'left' },
+    { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 2.2, w: 100, size: fitSize(d.category, 0.9, asp, 0.028, 1, 0.015), color: OFFI.white, weight: 800, align: 'center', track: 0.16 },
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 12, w: 88, size: fitSize(d.product, 0.86, asp, 0.07, 2, 0.04), color: OFFI.ink, weight: 900, align: 'center' },
+    { ...B, id: 'rule', kind: 'box', x: 42, y: 25, w: 16, h: 0.5, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
   ];
-  if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 28.5, w: 100, size: 0.034, color: CHOC.old, weight: 700, align: 'center', strike: true, strikeW: 0.055 });
-  // Prix géant à gauche
+  if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 28.5, w: 100, size: 0.032, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.05 });
+  // Prix vert (peu d'encre : juste les chiffres sur blanc)
   out.push(
-    { ...B, id: 'priceInt', kind: 'text', text: intp, x: 6, y: 34, size: 0.25, color: CHOC.price, weight: 900, align: 'left' },
-    { ...B, id: 'euro', kind: 'text', text: '€', x: 45, y: 37, size: 0.085, color: CHOC.price, weight: 900, align: 'left' },
-    { ...B, id: 'cents', kind: 'text', text: cents, x: 45, y: 49, size: 0.095, color: CHOC.price, weight: 900, align: 'left' },
+    { ...B, id: 'priceInt', kind: 'text', text: intp, x: 8, y: 33, size: 0.235, color: OFFI.green, weight: 900, align: 'left' },
+    { ...B, id: 'euro', kind: 'text', text: '€', x: 46, y: 36, size: 0.08, color: OFFI.green, weight: 900, align: 'left' },
+    { ...B, id: 'cents', kind: 'text', text: cents, x: 46, y: 47, size: 0.09, color: OFFI.green, weight: 900, align: 'left' },
   );
-  // Pastille −% à droite (le « disque choc »)
+  // Pastille −% : disque vert sobre à droite
   if (pctVal) out.push(
-    { ...B, id: 'burst', kind: 'box', shape: 'circle', x: 60, y: 32, w: 36, bg: CHOC.accent, size: 0, color: CHOC.accent, weight: 400, align: 'left', shadow: true },
-    { ...B, id: 'burstTxt', kind: 'text', text: `-${pctVal}%`, x: 60, y: 41, w: 36, size: 0.085, color: '#fff', weight: 900, align: 'center' },
+    { ...B, id: 'burst', kind: 'box', shape: 'circle', x: 62, y: 31, w: 33, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left', shadow: true },
+    { ...B, id: 'burstTxt', kind: 'text', text: `-${pctVal}%`, x: 62, y: 40, w: 33, size: 0.08, color: OFFI.white, weight: 900, align: 'center' },
   );
-  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 62, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: CHOC.muted, weight: 600, align: 'center', italic: true });
-  // Barre d'économie
+  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 60, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: OFFI.muted, weight: 600, align: 'center', italic: true });
+  // Barre d'économie : fond vert très clair (économe en encre)
   if (econ) out.push(
-    { ...B, id: 'saveBox', kind: 'box', x: 14, y: 69, w: 72, h: 8, bg: CHOC.accent, radius: 999, size: 0, color: CHOC.accent, weight: 400, align: 'left', shadow: true },
-    { ...B, id: 'saveTxt', kind: 'text', text: `VOUS ÉCONOMISEZ ${econ}`, x: 14, y: 71.2, w: 72, size: 0.03, color: '#fff', weight: 900, align: 'center', track: 0.04 },
+    { ...B, id: 'saveBox', kind: 'box', x: 16, y: 68, w: 68, h: 8, bg: OFFI.greenSoft, radius: 999, size: 0, color: OFFI.greenSoft, weight: 400, align: 'left' },
+    { ...B, id: 'saveTxt', kind: 'text', text: `VOUS ÉCONOMISEZ ${econ}`, x: 16, y: 70.2, w: 68, size: 0.028, color: OFFI.green, weight: 900, align: 'center', track: 0.03 },
   );
-  out.push({ ...B, id: 'urgency', kind: 'text', text: dt || '⚡ OFFRE À SAISIR — STOCK LIMITÉ', x: 6, y: 81, w: 88, size: 0.024, color: CHOC.cat, weight: 800, align: 'center', track: 0.05 });
-  if (!o.small && o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 8, y: 95, w: 84, size: 0.014, color: CHOC.muted, weight: 400, align: 'center' });
-  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 43, y: 86, w: 14, size: 0, color: '#000', weight: 400, align: 'left' });
+  out.push({ ...B, id: 'bottomRule', kind: 'box', x: 14, y: 84, w: 72, h: 0.35, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' });
+  out.push({ ...B, id: 'urgency', kind: 'text', text: dt || 'Offre dans la limite des stocks disponibles', x: 6, y: 86, w: 88, size: 0.022, color: OFFI.green, weight: 700, align: 'center', track: 0.03 });
+  if (!o.small && o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 8, y: 95, w: 84, size: 0.014, color: OFFI.muted, weight: 400, align: 'center' });
+  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 84, y: 89, w: 12, size: 0, color: '#000', weight: 400, align: 'left' });
   return out;
 }
 
 function seedEls(l: Label, o: SeedOpts): El[] {
-  if (o.theme === 'choc' && l.type === 'prix-promo' && !o.landscape) return chocPromoPortrait(l, o);
+  if (o.theme === 'officine' && l.type === 'prix-promo' && !o.landscape) return officinePromoPortrait(l, o);
   const a = l.accent, d = l.data;
   const asp = o.aspect || 0.7;
   // Aplat mat, centré : pas de point lumineux blanc, léger fondu vers le bord.
@@ -365,7 +369,7 @@ function resolveEls(l: Label, o: SeedOpts): El[] {
   return [...bound, ...l.extra];
 }
 function isBound(l: Label, id: string): boolean {
-  for (const theme of ['promo', 'choc']) for (const landscape of [false, true]) {
+  for (const theme of ['promo', 'officine']) for (const landscape of [false, true]) {
     if (seedEls(l, { ...FULL, landscape, theme }).some(e => e.id === id)) return true;
   }
   return false;
@@ -975,7 +979,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
               <button onClick={addLabel} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Étiquette</button>
               <button onClick={() => addTextBlock()} title="Ajouter un bloc de texte (ou double-cliquez sur l'étiquette)" style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Texte</button>
               <div style={{ display: 'flex', gap: 3, border: '1px solid #334155', borderRadius: 7, padding: 2 }} title="Style d'étiquette (non destructif)">
-                {[{ id: 'promo', t: '🏷️ Promo', c: '#16a34a' }, { id: 'choc', t: '⚡ Choc', c: '#FF2630' }].map(th => { const on = (project.theme || 'promo') === th.id; return <button key={th.id} onClick={() => setTheme(th.id)} style={{ padding: '4px 9px', background: on ? th.c : 'transparent', color: on ? '#fff' : '#94a3b8', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{th.t}</button>; })}
+                {[{ id: 'promo', t: '🏷️ Promo', c: '#D4A017' }, { id: 'officine', t: '✚ Officine', c: '#0E7A4D' }].map(th => { const on = (project.theme || 'promo') === th.id; return <button key={th.id} onClick={() => setTheme(th.id)} style={{ padding: '4px 9px', background: on ? th.c : 'transparent', color: on ? '#fff' : '#94a3b8', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{th.t}</button>; })}
               </div>
               <button onClick={() => setShowPreview(true)} style={{ padding: '7px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 800, boxShadow: '0 2px 10px #16a34a66' }}>🖨 Imprimer / PDF</button>
             </div>
