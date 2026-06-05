@@ -926,8 +926,22 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
                   <SectionTitle>Blocs</SectionTitle>
                   <button onClick={() => addTextBlock()} style={{ width: '100%', padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 800, marginBottom: 8 }}>＋ Bloc de texte</button>
-                  {hiddenCount > 0 && <button onClick={restoreHidden} style={{ width: '100%', padding: '7px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>↺ Réafficher {hiddenCount} bloc{hiddenCount > 1 ? 's' : ''} masqué{hiddenCount > 1 ? 's' : ''}</button>}
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>Cliquez un bloc pour le déplacer, le redimensionner (taille de police) ou le supprimer (× rouge). Les blocs du modèle masqués sont récupérables ci-dessus.</div>
+                  {hiddenCount > 0 && <button onClick={restoreHidden} style={{ width: '100%', padding: '7px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>↺ Réafficher {hiddenCount} bloc{hiddenCount > 1 ? 's' : ''} masqué{hiddenCount > 1 ? 's' : ''}</button>}
+                  {(() => {
+                    const blocks = resolveEls(current, seedOpts).filter(e => !e.hidden && (e.kind === 'text' || e.kind === 'pill' || e.kind === 'image'));
+                    return <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 }}>
+                      <label style={lbl}>Tous les écrits / blocs ({blocks.length})</label>
+                      {blocks.map(e => {
+                        const on = selEl === e.id;
+                        const name = e.kind === 'image' ? '🖼 image / logo' : (e.text?.trim() ? e.text.slice(0, 26) : '(vide)');
+                        return <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, background: on ? '#16a34a22' : '#1e293b', border: `1px solid ${on ? '#16a34a' : '#334155'}`, borderRadius: 6, padding: '5px 8px' }}>
+                          <button onClick={() => pickEl(e.id)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', color: on ? '#f8fafc' : '#cbd5e1', cursor: 'pointer', fontSize: 12, fontFamily: SYS, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</button>
+                          <button onClick={() => delEl(e.id)} title="Supprimer ce bloc" style={{ flexShrink: 0, width: 24, height: 24, background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 13, fontWeight: 800, lineHeight: 1 }}>🗑</button>
+                        </div>;
+                      })}
+                    </div>;
+                  })()}
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 8, lineHeight: 1.5 }}>Cliquez un bloc dans la liste pour le sélectionner, ou 🗑 pour le retirer. Les blocs du modèle sont masqués (récupérables) ; les blocs ajoutés sont supprimés.</div>
                 </div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
                   <SectionTitle>Logo marque & pictos</SectionTitle>
@@ -941,7 +955,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                   </Field>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{BADGES.map(b => <button key={b.t} onClick={() => addBadge(b.t, b.bg)} style={{ padding: '4px 8px', background: b.bg, color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 9.5, fontWeight: 800 }}>{b.t}</button>)}</div>
                 </div>
-                {currentEl && <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 4 }}><SectionTitle>✦ Élément : {currentEl.kind === 'image' ? 'logo / image' : (currentEl.text ? `« ${currentEl.text.slice(0, 18)} »` : currentEl.kind)}</SectionTitle><ElementEditor el={currentEl} patch={patchEl} /></div>}
+                {currentEl && <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 4 }}><SectionTitle>✦ Élément : {currentEl.kind === 'image' ? 'logo / image' : (currentEl.text ? `« ${currentEl.text.slice(0, 18)} »` : currentEl.kind)}</SectionTitle><ElementEditor el={currentEl} patch={patchEl} /><button onClick={() => delEl(currentEl.id)} style={{ width: '100%', padding: '8px', marginTop: 8, background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>🗑 Supprimer ce bloc</button></div>}
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6, display: 'flex', gap: 8 }}>
                   <button onClick={duplicateLabel} style={{ flex: 1, padding: '8px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>⧉ Dupliquer</button>
                   <button onClick={deleteLabel} style={{ flex: 1, padding: '8px', background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>🗑 Supprimer</button>
