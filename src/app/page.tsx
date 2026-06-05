@@ -936,6 +936,41 @@ const localStore: Store = {
   async remove(id) { localStorage.removeItem(lid(id)); const ids: string[] = JSON.parse(localStorage.getItem(L_IDS) || '[]'); localStorage.setItem(L_IDS, JSON.stringify(ids.filter(x => x !== id))); },
 };
 
+// ── Bibliothèque de logos enregistrés (cloud KV ou repli local) ──────────
+interface SavedLogo { id: string; name: string; src: string }
+interface LogoStore { list(): Promise<SavedLogo[]>; add(name: string, src: string): Promise<SavedLogo[]>; remove(id: string): Promise<SavedLogo[]>; }
+const serverLogos: LogoStore = {
+  async list() { const r = await fetch('/api/logos', { headers: authHeaders(), cache: 'no-store' }); return r.ok ? r.json() : []; },
+  async add(name, src) { await fetch('/api/logos', { method: 'POST', headers: { 'content-type': 'application/json', ...authHeaders() }, body: JSON.stringify({ name, src }) }); return this.list(); },
+  async remove(id) { await fetch(`/api/logos?id=${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() }); return this.list(); },
+};
+const LOGOS_LS = 'pp:logos';
+const localLogos: LogoStore = {
+  async list() { return JSON.parse(localStorage.getItem(LOGOS_LS) || '[]'); },
+  async add(name, src) { const arr: SavedLogo[] = JSON.parse(localStorage.getItem(LOGOS_LS) || '[]'); arr.unshift({ id: uid(), name, src }); const next = arr.slice(0, 50); localStorage.setItem(LOGOS_LS, JSON.stringify(next)); return next; },
+  async remove(id) { const arr: SavedLogo[] = JSON.parse(localStorage.getItem(LOGOS_LS) || '[]').filter((l: SavedLogo) => l.id !== id); localStorage.setItem(LOGOS_LS, JSON.stringify(arr)); return arr; },
+};
+
+// Bibliothèque de logos : téléverser pour enregistrer, cliquer pour appliquer.
+function LogoLibrary({ logos, onSave, onDelete, onPick }: { logos: SavedLogo[]; onSave: (name: string, src: string) => void; onDelete: (id: string) => void; onPick: (src: string) => void }) {
+  const upload = (file: File) => { const r = new FileReader(); r.onload = () => onSave(file.name.replace(/\.[^.]+$/, ''), r.result as string); r.readAsDataURL(file); };
+  return (
+    <Field label="Logos enregistrés (bibliothèque)">
+      <label style={{ ...inp, cursor: 'pointer', textAlign: 'center', display: 'block', marginBottom: 8 }}>⬆ Enregistrer un logo<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && upload(e.target.files[0])} /></label>
+      {logos.length === 0 ? <div style={{ fontSize: 11, color: '#64748b' }}>Aucun logo enregistré. Téléversez-le une fois, il restera disponible et s&apos;applique en un clic.</div> : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6 }}>
+          {logos.map(lg => (
+            <div key={lg.id} onClick={() => onPick(lg.src)} title={`Appliquer : ${lg.name}`} style={{ position: 'relative', background: '#fff', border: '1px solid #334155', borderRadius: 6, padding: 4, height: 54, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <img src={lg.src} alt={lg.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+              <button onClick={e => { e.stopPropagation(); onDelete(lg.id); }} title="Retirer de la bibliothèque" style={{ position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%', background: '#ef4444', color: '#fff', border: '2px solid #0f172a', fontSize: 9, cursor: 'pointer', lineHeight: 1, padding: 0 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Field>
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────────
 //  STUDIO
 // ──────────────────────────────────────────────────────────────────────
@@ -946,7 +981,7 @@ function useMobile() {
   return m;
 }
 
-function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo, canRedo }: { project: Project; setProject: (fn: (p: Project) => Project) => void; onBack: () => void; saving: string; mode: 'server' | 'local'; undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean; }) {
+function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo, canRedo, logos, onSaveLogo, onDeleteLogo }: { project: Project; setProject: (fn: (p: Project) => Project) => void; onBack: () => void; saving: string; mode: 'server' | 'local'; undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean; logos: SavedLogo[]; onSaveLogo: (name: string, src: string) => void; onDeleteLogo: (id: string) => void; }) {
   const [selLabel, setSelLabel] = useState<string | null>(null);
   const [selEl, setSelEl] = useState<string | null>(null);
   const [editing, setEditing] = useState(true);
@@ -1024,7 +1059,8 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const duplicateLabel = () => { if (!current) return; const copy: Label = { ...current, id: uid(), overrides: { ...current.overrides }, extra: current.extra.map(e => ({ ...e })) }; setProject(p => ({ ...p, labels: [...p.labels, copy] })); setSelLabel(copy.id); };
   const deleteLabel = () => { if (!current) return; setProject(p => ({ ...p, labels: p.labels.filter(l => l.id !== current.id) })); setSelLabel(null); setSelEl(null); };
   const addBadge = (t: string, bg: string) => { if (!current) return; const e: El = { id: 'b' + uid(), kind: 'pill', text: t, x: 8, y: 8, size: 0.045, font: SYS, color: '#fff', bg, weight: 900, align: 'center', rot: -8, radius: 6, removable: true }; updateLabel(current.id, l => ({ ...l, extra: [...l.extra, e] })); setSelEl(e.id); };
-  const uploadBrandLogo = (file: File) => { if (!current) return; const r = new FileReader(); r.onload = () => { const e: El = { id: 'logo' + uid(), kind: 'image', src: r.result as string, x: 66, y: 6, w: 22, size: 0, font: SYS, color: '#000', weight: 400, align: 'left', rot: 0, removable: true }; updateLabel(current.id, l => ({ ...l, extra: [...l.extra, e] })); setSelEl(e.id); }; r.readAsDataURL(file); };
+  const addBrandLogoSrc = (src: string) => { if (!current) return; const e: El = { id: 'logo' + uid(), kind: 'image', src, x: 66, y: 6, w: 22, size: 0, font: SYS, color: '#000', weight: 400, align: 'left', rot: 0, removable: true }; updateLabel(current.id, l => ({ ...l, extra: [...l.extra, e] })); setSelEl(e.id); };
+  const uploadBrandLogo = (file: File) => { const r = new FileReader(); r.onload = () => addBrandLogoSrc(r.result as string); r.readAsDataURL(file); };
   const uploadPharmaLogo = (file: File) => { const r = new FileReader(); r.onload = () => setProject(p => ({ ...p, logo: r.result as string })); r.readAsDataURL(file); };
 
   const dragStart = (ev: React.PointerEvent, labelId: string, elId: string, el: El) => {
@@ -1109,6 +1145,8 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                     {project.logo && <button onClick={() => setProject(p => ({ ...p, logo: null }))} style={{ padding: '7px 10px', background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 12 }}>✕</button>}
                   </div>
                 </Field>
+                <LogoLibrary logos={logos} onSave={onSaveLogo} onDelete={onDeleteLogo} onPick={src => setProject(p => ({ ...p, logo: src }))} />
+                {project.logo && <button onClick={() => onSaveLogo('Logo', project.logo!)} style={{ ...inp, cursor: 'pointer', textAlign: 'center', display: 'block', marginBottom: 10, color: '#cbd5e1' }}>💾 Enregistrer le logo actuel dans la bibliothèque</button>}
                 <Field label="Mentions légales (bas d'étiquette)"><textarea value={project.disclaimer} onChange={e => setProject(p => ({ ...p, disclaimer: e.target.value }))} rows={2} style={{ ...inp, resize: 'none' }} /></Field>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}>
                   <SectionTitle>Dimensions des étiquettes</SectionTitle>
@@ -1163,6 +1201,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
                   <SectionTitle>Logo marque & pictos</SectionTitle>
                   <label style={{ ...inp, cursor: 'pointer', textAlign: 'center', display: 'block', marginBottom: 10 }}>⬆ Logo de marque / labo<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && uploadBrandLogo(e.target.files[0])} /></label>
+                  <LogoLibrary logos={logos} onSave={onSaveLogo} onDelete={onDeleteLogo} onPick={addBrandLogoSrc} />
                   <Field label="Pastille % personnalisée">
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <input inputMode="numeric" value={pctBadge} onChange={e => setPctBadge(e.target.value.replace(/[^\d]/g, ''))} placeholder="20" style={{ ...inp, width: 64 }} />
@@ -1356,6 +1395,7 @@ export default function Home() {
   const [project, setProjectState] = useState<Project | null>(null);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [saving, setSaving] = useState('Enregistré');
+  const [logos, setLogos] = useState<SavedLogo[]>([]);
   const [loginErr, setLoginErr] = useState('');
   const [histVer, setHistVer] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1387,6 +1427,13 @@ export default function Home() {
   const newPlanche = async () => { const id = await store.create(defaultProject()); await openPlanche(id); refreshList(store); };
   const deletePlanche = async (id: string) => { await store.remove(id); refreshList(store); };
   const renamePlanche = async (id: string, pharmacy: string, plan: string) => { const p = await store.get(id); if (!p) return; await store.save(id, { ...p, pharmacy, plan }); refreshList(store); };
+
+  // Bibliothèque de logos (cloud si configuré, sinon local)
+  const logoStore = mode === 'server' ? serverLogos : localLogos;
+  const refreshLogos = useCallback(async () => { try { setLogos(await (mode === 'server' ? serverLogos : localLogos).list()); } catch { /* 401 */ } }, [mode]);
+  useEffect(() => { if (view === 'library' || view === 'studio') refreshLogos(); }, [view, refreshLogos]);
+  const saveLogo = async (name: string, src: string) => { try { setLogos(await logoStore.add(name, src)); } catch { /* ignore */ } };
+  const deleteLogo = async (id: string) => { try { setLogos(await logoStore.remove(id)); } catch { /* ignore */ } };
 
   // Sauvegarde : télécharge toutes les planches en un seul fichier JSON.
   const exportAll = async () => {
@@ -1455,6 +1502,6 @@ export default function Home() {
   void histVer; // force le recalcul de canUndo/canRedo
   if (view === 'loading') return <div style={{ minHeight: '100vh', background: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontFamily: SYS }}>Chargement…</div>;
   if (view === 'login') return <Login onSubmit={doLogin} error={loginErr} />;
-  if (view === 'studio' && project) return <Studio project={project} setProject={setProject} onBack={backToLibrary} saving={saving} mode={mode} undo={undo} redo={redo} canUndo={past.current.length > 0} canRedo={future.current.length > 0} />;
+  if (view === 'studio' && project) return <Studio project={project} setProject={setProject} onBack={backToLibrary} saving={saving} mode={mode} undo={undo} redo={redo} canUndo={past.current.length > 0} canRedo={future.current.length > 0} logos={logos} onSaveLogo={saveLogo} onDeleteLogo={deleteLogo} />;
   return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onRename={renamePlanche} onExport={exportAll} onImport={importBackup} onLogout={logout} />;
 }

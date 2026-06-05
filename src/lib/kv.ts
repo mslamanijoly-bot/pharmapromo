@@ -17,6 +17,7 @@ export function checkKey(req: Request): boolean {
 
 export const IDS_KEY = 'pp:ids';
 export const plancheKey = (id: string) => `pp:planche:${id}`;
+export const LOGOS_KEY = 'pp:logos';
 
 export function unauthorized() {
   return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'content-type': 'application/json' } });
