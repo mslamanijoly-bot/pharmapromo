@@ -1095,7 +1095,13 @@ function PrintPreviewModal({ project, setProject, onClose }: { project: Project;
 //  BIBLIOTHÈQUE + LOGIN + ORCHESTRATION
 // ──────────────────────────────────────────────────────────────────────
 
-function Library({ metas, mode, onOpen, onNew, onDelete, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onLogout: () => void; }) {
+function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onRename: (id: string, pharmacy: string, plan: string) => void; onLogout: () => void; }) {
+  const [editId, setEditId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState('');
+  const [draftPlan, setDraftPlan] = useState('');
+  const startEdit = (m: Meta) => { setEditId(m.id); setDraftName(m.pharmacy); setDraftPlan(m.plan); };
+  const commit = () => { if (editId) onRename(editId, draftName.trim() || 'Sans nom', draftPlan.trim()); setEditId(null); };
+  const cardInp: CSSProperties = { width: '100%', padding: '6px 7px', background: '#1e293b', color: '#e2e8f0', border: '1px solid #16a34a', borderRadius: 5, fontSize: 13, boxSizing: 'border-box', fontFamily: SYS, marginBottom: 6 };
   return (
     <div style={{ minHeight: '100vh', background: '#0b1220', fontFamily: SYS, color: '#e2e8f0' }}>
       <div style={{ background: '#0f172a', borderBottom: '1px solid #1e293b', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -1109,14 +1115,33 @@ function Library({ metas, mode, onOpen, onNew, onDelete, onLogout }: { metas: Me
           <div style={{ padding: 40, textAlign: 'center', color: '#475569', border: '2px dashed #1e293b', borderRadius: 12 }}>Aucune planche. Cliquez <strong style={{ color: '#94a3b8' }}>Nouvelle planche</strong> pour démarrer.</div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 14 }}>
-            {metas.map(m => (
-              <div key={m.id} onClick={() => onOpen(m.id)} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 18, cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.borderColor = '#16a34a')} onMouseLeave={e => (e.currentTarget.style.borderColor = '#1e293b')}>
+            {metas.map(m => {
+              const editing = editId === m.id;
+              return (
+              <div key={m.id} onClick={() => { if (!editing) onOpen(m.id); }} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 18, cursor: editing ? 'default' : 'pointer' }} onMouseEnter={e => (e.currentTarget.style.borderColor = '#16a34a')} onMouseLeave={e => (e.currentTarget.style.borderColor = '#1e293b')}>
                 <div style={{ height: 80, background: 'linear-gradient(135deg,#FFD400,#F5C800)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, marginBottom: 12 }}>🏷️</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc' }}>{m.pharmacy}</div>
-                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{m.plan}</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span style={{ fontSize: 10, color: '#475569' }}>{m.updatedAt ? new Date(m.updatedAt).toLocaleDateString('fr-FR') : ''}</span><button onClick={e => { e.stopPropagation(); if (confirm('Supprimer cette planche ?')) onDelete(m.id); }} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 13 }}>🗑</button></div>
+                {editing ? (
+                  <div onClick={e => e.stopPropagation()}>
+                    <input autoFocus value={draftName} onChange={e => setDraftName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') commit(); else if (e.key === 'Escape') setEditId(null); }} placeholder="Nom de la planche" style={cardInp} />
+                    <input value={draftPlan} onChange={e => setDraftPlan(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') commit(); else if (e.key === 'Escape') setEditId(null); }} placeholder="Intitulé / période" style={{ ...cardInp, fontSize: 12 }} />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={commit} style={{ flex: 1, padding: '6px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>✓ Enregistrer</button>
+                      <button onClick={() => setEditId(null)} style={{ padding: '6px 10px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 12 }}>✕</button>
+                    </div>
+                  </div>
+                ) : (<>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc' }}>{m.pharmacy}</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{m.plan}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                    <span style={{ fontSize: 10, color: '#475569' }}>{m.updatedAt ? new Date(m.updatedAt).toLocaleDateString('fr-FR') : ''}</span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={e => { e.stopPropagation(); startEdit(m); }} title="Renommer" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13 }}>✏️</button>
+                      <button onClick={e => { e.stopPropagation(); if (confirm('Supprimer cette planche ?')) onDelete(m.id); }} title="Supprimer" style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 13 }}>🗑</button>
+                    </div>
+                  </div>
+                </>)}
               </div>
-            ))}
+            );})}
           </div>
         )}
       </div>
@@ -1180,6 +1205,7 @@ export default function Home() {
   const openPlanche = async (id: string) => { const p = await store.get(id); if (p) { const mp = migrate(p); setProjectState(mp); projectRef.current = mp; committed.current = mp; past.current = []; future.current = []; setHistVer(v => v + 1); setCurrentId(id); setSaving('Enregistré'); setView('studio'); } };
   const newPlanche = async () => { const id = await store.create(defaultProject()); await openPlanche(id); refreshList(store); };
   const deletePlanche = async (id: string) => { await store.remove(id); refreshList(store); };
+  const renamePlanche = async (id: string, pharmacy: string, plan: string) => { const p = await store.get(id); if (!p) return; await store.save(id, { ...p, pharmacy, plan }); refreshList(store); };
   const backToLibrary = async () => { if (saveTimer.current) { clearTimeout(saveTimer.current); if (currentId && projectRef.current) await store.save(currentId, projectRef.current); } setView('library'); setCurrentId(null); setProjectState(null); refreshList(store); };
 
   const setProject = useCallback((fn: (p: Project) => Project) => {
@@ -1226,5 +1252,5 @@ export default function Home() {
   if (view === 'loading') return <div style={{ minHeight: '100vh', background: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontFamily: SYS }}>Chargement…</div>;
   if (view === 'login') return <Login onSubmit={doLogin} error={loginErr} />;
   if (view === 'studio' && project) return <Studio project={project} setProject={setProject} onBack={backToLibrary} saving={saving} mode={mode} undo={undo} redo={redo} canUndo={past.current.length > 0} canRedo={future.current.length > 0} />;
-  return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onLogout={logout} />;
+  return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onRename={renamePlanche} onLogout={logout} />;
 }
