@@ -30,6 +30,7 @@ interface El {
 interface LabelData {
   category: string; product: string; qtyLabel: string;
   normalPrice: string; promoPrice: string;
+  remiseType: string; remiseManual: string;
   couponValue: string; couponExpiry: string;
   lotQty: string; lotFree: string; lotPrice: string; unitPrice: string;
   t1q: string; t1p: string; t2q: string; t2p: string; t3q: string; t3p: string;
@@ -53,17 +54,6 @@ const PAPERS: Record<string, { name: string; w: number; h: number }> = {
 
 interface Meta { id: string; pharmacy: string; plan: string; updatedAt: number; }
 interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; aspect?: number; theme?: string; }
-
-// ── DA « Apothicaire de luxe » (thème premium) ───────────────────────
-const PREMIUM = {
-  bg: '#F6F2E9',     // ivoire chaud
-  ink: '#243B2E',    // vert très foncé (texte)
-  green: '#2E5141',  // vert bouteille
-  gold: '#B08D4F',   // or / laiton
-  muted: '#8A8472',  // taupe (mentions, prix barré)
-  line: '#D8CFBE',   // filets
-};
-const SERIF = 'var(--font-playfair), Georgia, serif';
 
 // ──────────────────────────────────────────────────────────────────────
 //  DIRECTION ARTISTIQUE
@@ -141,6 +131,7 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const newData = (): LabelData => ({
   category: 'COMPLÉMENT ALIMENTAIRE', product: 'Nom du produit', qtyLabel: '',
   normalPrice: '31,90', promoPrice: '26,90',
+  remiseType: 'euro', remiseManual: '',
   couponValue: '2,00', couponExpiry: '31/12/2026',
   lotQty: '3', lotFree: '1', lotPrice: '19,98', unitPrice: '9,99',
   t1q: '1', t1p: '9,90', t2q: '2', t2p: '8,50', t3q: '3', t3p: '7,90',
@@ -154,7 +145,7 @@ function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelData>): La
 function defaultProject(): Project {
   return {
     pharmacy: 'Pharmacie Homme de Fer', plan: 'Plan promotionnel', logo: null, disclaimer: DISCLAIMER,
-    pageFormat: 'A4', labelWmm: 210, labelHmm: 297, printPaper: 'A4', printMarginMm: 0, theme: 'premium',
+    pageFormat: 'A4', labelWmm: 210, labelHmm: 297, printPaper: 'A4', printMarginMm: 0, theme: 'promo',
     labels: [newLabel('prix-promo', { category: 'COMPLÉMENT ALIMENTAIRE', product: 'Chondro-haid Fort ARKOPHARMA', qtyLabel: 'Lot de 3 x 60 gélules*', normalPrice: '31,90', promoPrice: '26,90' })],
   };
 }
@@ -166,7 +157,8 @@ function migrate(p: Project): Project {
   if (q.disclaimer == null) q.disclaimer = DISCLAIMER;
   if (!q.printPaper) q.printPaper = 'A4';
   if (q.printMarginMm == null) q.printMarginMm = 0;
-  if (!q.theme) q.theme = 'promo';
+  // thèmes premium retirés : tout repasse en « promo »
+  q.theme = 'promo';
   q.labels = (q.labels || []).map(l => ({ ...l, data: { ...newData(), ...l.data } }));
   return q;
 }
@@ -209,114 +201,17 @@ function footEls(l: Label, o: SeedOpts): El[] {
   return out;
 }
 
-// ── Thème PREMIUM « Apothicaire de luxe » ─────────────────────────────
-function premFrame(d: LabelData, asp: number): El[] {
-  return [
-    { ...B, id: 'frame', kind: 'box', x: 2.5, y: 2, w: 95, h: 96, bg: 'transparent', border: `1px solid ${PREMIUM.gold}`, radius: 3, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
-    { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 6.5, w: 100, size: fitSize(d.category, 0.8, asp, 0.026, 1, 0.013), color: PREMIUM.gold, weight: 600, align: 'center', track: 0.18 },
-    { ...B, id: 'catRule', kind: 'box', x: 41, y: 11, w: 18, h: 0.3, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
-  ];
-}
-function premFoot(l: Label, o: SeedOpts): El[] {
-  const out: El[] = [{ ...B, id: 'bottomRule', kind: 'box', x: 14, y: 85.5, w: 72, h: 0.25, bg: PREMIUM.line, size: 0, color: PREMIUM.line, weight: 400, align: 'left' }];
-  const dt = dateText(l.data);
-  if (!o.small) {
-    if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 0, y: 87.5, w: 100, size: 0.016, color: PREMIUM.muted, weight: 500, align: 'center', italic: true });
-    if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 10, y: 95, w: 80, size: 0.013, color: PREMIUM.muted, weight: 400, align: 'center' });
-  }
-  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 44, y: 90, w: 12, size: 0, color: '#000', weight: 400, align: 'left' });
-  else if (o.editing) {
-    out.push({ ...B, id: 'logoBox', kind: 'box', x: 42, y: 89.5, w: 16, h: 4.5, bg: 'transparent', border: `1px dashed ${PREMIUM.muted}99`, radius: 4, size: 0, color: '#000', weight: 400, align: 'left' });
-    out.push({ ...B, id: 'logoTxt', kind: 'text', text: 'LOGO', x: 42, y: 90.6, w: 16, size: 0.015, color: PREMIUM.muted, weight: 600, align: 'center', track: 0.1 });
-  }
-  return out;
-}
-
-function premiumSeed(l: Label, o: SeedOpts): El[] {
-  const d = l.data, asp = o.aspect || 0.7;
-  const { normal } = priceParts(d.normalPrice, d.promoPrice);
-  const remise = normal > pf(d.promoPrice) ? Math.round(normal - pf(d.promoPrice)) : 0;
-
-  if (l.type === 'prix-promo') {
-    if (o.landscape) {
-      const out: El[] = [
-        { ...B, id: 'frame', kind: 'box', x: 1.5, y: 4, w: 97, h: 92, bg: 'transparent', border: `1px solid ${PREMIUM.gold}`, radius: 3, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
-        { ...B, id: 'divider', kind: 'box', x: 57, y: 14, w: 0.25, h: 72, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
-        { ...B, id: 'cat', kind: 'text', text: d.category, x: 5, y: 16, w: 50, size: fitSize(d.category, 0.5, asp, 0.06, 1, 0.03), color: PREMIUM.gold, weight: 600, align: 'left', track: 0.14 },
-        { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 28, w: 50, size: fitSize(d.product, 0.5, asp, 0.11, 2, 0.05), color: PREMIUM.green, weight: 700, align: 'left', font: SERIF },
-        { ...B, id: 'price', kind: 'text', text: `${d.promoPrice} €`, x: 58, y: 30, w: 40, size: 0.22, color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
-        { ...B, id: 'priceRule', kind: 'box', x: 70, y: 58, w: 16, h: 0.5, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
-      ];
-      if (normal > pf(d.promoPrice)) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 58, y: 19, w: 40, size: 0.07, color: PREMIUM.muted, weight: 400, align: 'center', strike: true });
-      if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 5, y: 64, w: 50, size: fitSize(d.qtyLabel, 0.5, asp, 0.06, 1, 0.035), color: PREMIUM.muted, weight: 400, align: 'left', italic: true });
-      if (remise) out.push({ ...B, id: 'remise', kind: 'text', text: `REMISE IMMÉDIATE  −${remise} €`, x: 58, y: 62, w: 40, size: 0.05, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.06 });
-      if (!o.small && o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 5, y: 90, w: 48, size: 0.042, color: PREMIUM.muted, weight: 400, align: 'left' });
-      if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 88, y: 80, w: 9, size: 0, color: '#000', weight: 400, align: 'left' });
-      else if (o.editing) { out.push({ ...B, id: 'logoBox', kind: 'box', x: 86, y: 80, w: 11, h: 14, bg: 'transparent', border: `1px dashed ${PREMIUM.muted}99`, radius: 4, size: 0, color: '#000', weight: 400, align: 'left' }); out.push({ ...B, id: 'logoTxt', kind: 'text', text: 'LOGO', x: 86, y: 85, w: 11, size: 0.04, color: PREMIUM.muted, weight: 600, align: 'center' }); }
-      return out;
-    }
-    const out: El[] = [
-      ...premFrame(d, asp),
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 17, w: 88, size: fitSize(d.product, 0.78, asp, 0.062, 2, 0.036), color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
-      { ...B, id: 'price', kind: 'text', text: `${d.promoPrice} €`, x: 0, y: 54, w: 100, size: 0.125, color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
-      { ...B, id: 'priceRule', kind: 'box', x: 40, y: 71, w: 20, h: 0.35, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
-    ];
-    if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 40, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.032, 1, 0.02), color: PREMIUM.muted, weight: 400, align: 'center', italic: true });
-    if (normal > pf(d.promoPrice)) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 49, w: 100, size: 0.03, color: PREMIUM.muted, weight: 400, align: 'center', strike: true });
-    if (remise) out.push({ ...B, id: 'remise', kind: 'text', text: `REMISE IMMÉDIATE  −${remise} €`, x: 0, y: 75, w: 100, size: 0.024, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.1 });
-    out.push(...premFoot(l, o));
-    return out;
-  }
-
-  if (l.type === 'bon-reduction') {
-    return [
-      ...premFrame(d, asp),
-      { ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 0, y: 18, w: 100, size: 0.028, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.12 },
-      { ...B, id: 'price', kind: 'text', text: `${d.couponValue} €`, x: 0, y: 28, w: 100, size: 0.14, color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
-      { ...B, id: 'priceRule', kind: 'box', x: 40, y: 50, w: 20, h: 0.35, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 56, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.03), color: PREMIUM.green, weight: 600, align: 'center', font: SERIF },
-      { ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 0, y: 74, w: 100, size: 0.026, color: PREMIUM.muted, weight: 400, align: 'center', italic: true },
-      ...premFoot(l, o),
-    ];
-  }
-
-  if (l.type === 'remise-lot') {
-    const qty = Math.max(2, parseInt(d.lotQty) || 3), free = Math.max(1, parseInt(d.lotFree) || 1), paid = Math.max(1, qty - free);
-    return [
-      ...premFrame(d, asp),
-      { ...B, id: 'ltag', kind: 'text', text: 'LOT ÉCONOMIQUE', x: 0, y: 16, w: 100, size: 0.026, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.12 },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 24, w: 88, size: fitSize(d.product, 0.88, asp, 0.06, 2, 0.035), color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
-      { ...B, id: 'sub', kind: 'text', text: `${paid} acheté${paid > 1 ? 's' : ''} + ${free} offert${free > 1 ? 's' : ''}`, x: 0, y: 43, w: 100, size: 0.03, color: PREMIUM.muted, weight: 400, align: 'center', italic: true },
-      { ...B, id: 'price', kind: 'text', text: `${d.lotPrice} €`, x: 0, y: 56, w: 100, size: 0.11, color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
-      { ...B, id: 'priceRule', kind: 'box', x: 41, y: 71, w: 18, h: 0.35, bg: PREMIUM.gold, size: 0, color: PREMIUM.gold, weight: 400, align: 'left' },
-      { ...B, id: 'unit', kind: 'text', text: 'le lot', x: 0, y: 73, w: 100, size: 0.022, color: PREMIUM.muted, weight: 400, align: 'center', italic: true },
-      ...premFoot(l, o),
-    ];
-  }
-
-  // multi-achat
-  const cols = [{ q: d.t1q, p: d.t1p }, { q: d.t2q, p: d.t2p }, { q: d.t3q, p: d.t3p }];
-  const out: El[] = [
-    ...premFrame(d, asp),
-    { ...B, id: 'mtitle', kind: 'text', text: 'OFFRE MULTI-ACHAT', x: 0, y: 16, w: 100, size: 0.026, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.12 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 24, w: 88, size: fitSize(d.product, 0.88, asp, 0.055, 2, 0.035), color: PREMIUM.green, weight: 700, align: 'center', font: SERIF },
-  ];
-  cols.forEach((c, i) => {
-    const cx = 9 + i * 28;
-    out.push({ ...B, id: `qt${i}`, kind: 'text', text: `${c.q} pce${parseInt(c.q) > 1 ? 's' : ''}`, x: cx, y: 46, w: 24, size: 0.028, color: PREMIUM.gold, weight: 600, align: 'center', track: 0.04 });
-    out.push({ ...B, id: `p${i}`, kind: 'text', text: `${c.p} €`, x: cx, y: 53, w: 24, size: 0.07, color: PREMIUM.green, weight: 700, align: 'center', font: SERIF });
-    if (i < 2) out.push({ ...B, id: `sep${i}`, kind: 'box', x: cx + 25, y: 47, w: 0.25, h: 16, bg: PREMIUM.line, size: 0, color: PREMIUM.line, weight: 400, align: 'left' });
-  });
-  out.push(...premFoot(l, o));
-  return out;
-}
-
 function seedEls(l: Label, o: SeedOpts): El[] {
-  if (o.theme === 'premium') return premiumSeed(l, o);
   const a = l.accent, d = l.data;
   const asp = o.aspect || 0.7;
-  const circleBg = `radial-gradient(circle at 38% 30%, #ffffff3a, ${a} 46%, ${DA.red2})`;
-  const { normal, intp, cents, remise } = priceParts(d.normalPrice, d.promoPrice);
+  // Aplat mat, centré : pas de point lumineux blanc, léger fondu vers le bord.
+  const circleBg = `radial-gradient(circle at 50% 50%, ${a} 58%, ${DA.red2})`;
+  const { normal, intp, cents, remise, pct } = priceParts(d.normalPrice, d.promoPrice);
+  // Remise affichée : € ou %, automatique ou saisie manuelle par l'utilisateur.
+  const manual = (d.remiseManual || '').trim();
+  const remiseTxt = d.remiseType === 'pct'
+    ? ((manual || pct) ? `-${manual || pct}%` : '')
+    : (manual ? `-${manual}€` : (remise ? `-${remise}€` : ''));
 
   // ===== PRIX PROMO =====
   if (l.type === 'prix-promo') {
@@ -333,9 +228,9 @@ function seedEls(l: Label, o: SeedOpts): El[] {
         { ...B, id: 'priceInt', kind: 'text', text: intp, x: 66, y: 18, size: 0.42, color: DA.priceY, weight: 900, align: 'left' },
         { ...B, id: 'euro', kind: 'text', text: '€', x: 85, y: 20.5, size: 0.135, color: DA.priceY, weight: 900, align: 'left' },
         { ...B, id: 'cents', kind: 'text', text: cents, x: 85, y: 37, size: 0.15, color: DA.priceY, weight: 900, align: 'left' },
-        ...(remise ? [
+        ...(remiseTxt ? [
           { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 64, y: 61, w: 30, h: 1.2, bg: '#ffffffcc', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
-          { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: `-${remise}€`, x: 64, y: 63.5, size: 0.12, color: '#fff', weight: 900, align: 'left' as Align },
+          { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: remiseTxt, x: 64, y: 63.5, size: 0.12, color: '#fff', weight: 900, align: 'left' as Align },
           { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 77, y: 64.5, w: 21, size: 0.048, color: '#fff', weight: 800, align: 'left' as Align },
         ] : []),
         ...footEls(l, o),
@@ -350,9 +245,9 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       { ...B, id: 'priceInt', kind: 'text', text: intp, x: 27, y: 17, size: 0.175, color: DA.priceY, weight: 900, align: 'left' },
       { ...B, id: 'euro', kind: 'text', text: '€', x: 60, y: 18.5, size: 0.052, color: DA.priceY, weight: 900, align: 'left' },
       { ...B, id: 'cents', kind: 'text', text: cents, x: 60, y: 27, size: 0.062, color: DA.priceY, weight: 900, align: 'left' },
-      ...(remise ? [
+      ...(remiseTxt ? [
         { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 31, y: 41, w: 38, h: 0.5, bg: '#ffffffcc', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
-        { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: `-${remise}€`, x: 31, y: 43, size: 0.05, color: '#fff', weight: 900, align: 'left' as Align },
+        { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: remiseTxt, x: 31, y: 43, size: 0.05, color: '#fff', weight: 900, align: 'left' as Align },
         { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 45, y: 43.5, w: 26, size: 0.021, color: '#fff', weight: 800, align: 'left' as Align },
       ] : []),
       { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 56, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.03), color: '#21392B', weight: 800, align: 'center' },
@@ -423,8 +318,8 @@ function resolveEls(l: Label, o: SeedOpts): El[] {
   return [...bound, ...l.extra];
 }
 function isBound(l: Label, id: string): boolean {
-  for (const theme of ['promo', 'premium']) for (const landscape of [false, true]) {
-    if (seedEls(l, { ...FULL, landscape, theme }).some(e => e.id === id)) return true;
+  for (const landscape of [false, true]) {
+    if (seedEls(l, { ...FULL, landscape }).some(e => e.id === id)) return true;
   }
   return false;
 }
@@ -445,7 +340,10 @@ function renderEl(e: El, H: number): CSSProperties {
     if (e.shape === 'circle') { st.width = `${e.w}%`; st.aspectRatio = '1 / 1'; st.height = 'auto'; st.borderRadius = '50%'; st.background = e.bg; }
     else { st.height = `${e.h ?? 10}%`; st.background = e.bg; st.borderRadius = e.radius ? `${e.radius}px` : undefined; }
     if (e.border) st.border = e.border;
-    if (e.shadow) st.boxShadow = '0 8px 22px rgba(0,0,0,0.20)';
+    // Cercle promo : anneau clair en bordure interne (effet « arc ») + ombre douce, sans reflet.
+    if (e.shadow) st.boxShadow = e.shape === 'circle'
+      ? 'inset 0 0 0 3px rgba(255,255,255,0.22), 0 8px 22px rgba(0,0,0,0.20)'
+      : '0 8px 22px rgba(0,0,0,0.20)';
     st.fontSize = 0;
   } else st.fontSize = fs;
   if (e.kind === 'pill') {
@@ -470,13 +368,12 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
   onDelEl: (id: string) => void;
 }) {
   const els = resolveEls(label, opts).filter(e => !e.hidden);
-  const premium = opts.theme === 'premium';
-  const bg = premium ? PREMIUM.bg : label.bg;
-  const selColor = premium ? PREMIUM.gold : label.accent;
+  const bg = label.bg;
+  const selColor = label.accent;
   return (
     <div data-labelbox onClick={(ev) => { ev.stopPropagation(); onSelectLabel(); }}
       style={{ position: 'relative', width: W, height: H, background: bg, border: editing ? `1px solid ${selectedLabel ? selColor : 'rgba(0,0,0,0.08)'}` : 'none', borderRadius: editing ? 6 : 0, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${selColor}44` : 'none', flexShrink: 0, boxSizing: 'border-box' }}>
-      {!premium && <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.7, pointerEvents: 'none' }} />}
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.7, pointerEvents: 'none' }} />
       {els.map(e => {
         const sel = editing && selectedEl === e.id;
         return (
@@ -621,7 +518,22 @@ function ContentForm({ l, set }: { l: Label; set: (k: keyof LabelData, v: string
   const dates = G(<TextInp label="Date début" value={d.dateStart} onChange={v => set('dateStart', v)} placeholder="01/06/2026" />, <TextInp label="Date fin" value={d.dateEnd} onChange={v => set('dateEnd', v)} placeholder="30/06/2026" />);
   let middle: React.ReactNode = null;
   const normal = pf(d.normalPrice), promo = pf(d.promoPrice);
-  if (l.type === 'prix-promo') middle = <>{G(<PriceInp label="Prix normal €" value={d.normalPrice} onChange={v => set('normalPrice', v)} />, <PriceInp label="Prix promo €" value={d.promoPrice} onChange={v => set('promoPrice', v)} />)}{normal > promo && <div style={{ background: '#0d2137', border: '1px solid #1e3a5f', borderRadius: 5, padding: '7px 9px', fontSize: 12, color: '#38bdf8', marginBottom: 10 }}>💶 Remise immédiate calculée : −{ff(normal - promo)} €</div>}{normal > 0 && promo > 0 && promo >= normal && <Warn>⚠ Le prix promo doit être <strong>inférieur</strong> au prix normal.</Warn>}</>;
+  const diff = normal > promo ? Math.round((normal - promo) * 100) / 100 : 0;
+  const autoPct = normal > 0 && diff > 0 ? Math.round((diff / normal) * 100) : 0;
+  const isPct = d.remiseType === 'pct';
+  const tgl = (active: boolean): CSSProperties => ({ flex: 1, padding: '6px', background: active ? '#16a34a' : '#1e293b', color: active ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700 });
+  if (l.type === 'prix-promo') middle = <>
+    {G(<PriceInp label="Prix normal €" value={d.normalPrice} onChange={v => set('normalPrice', v)} />, <PriceInp label="Prix promo €" value={d.promoPrice} onChange={v => set('promoPrice', v)} />)}
+    <Field label="Affichage de la remise">
+      <div style={{ display: 'flex', gap: 5 }}>
+        <button onClick={() => set('remiseType', 'euro')} style={tgl(!isPct)}>En €</button>
+        <button onClick={() => set('remiseType', 'pct')} style={tgl(isPct)}>En %</button>
+      </div>
+    </Field>
+    <TextInp label={isPct ? 'Remise % affichée (vide = auto)' : 'Remise € affichée (vide = auto)'} value={d.remiseManual} onChange={v => set('remiseManual', v.replace(/[^\d.,]/g, '').replace('.', ','))} placeholder={isPct ? (autoPct ? `${autoPct}` : 'ex : 20') : (diff ? ff(diff) : 'ex : 0,50')} />
+    {diff > 0 && <div style={{ background: '#0d2137', border: '1px solid #1e3a5f', borderRadius: 5, padding: '7px 9px', fontSize: 12, color: '#38bdf8', marginBottom: 10 }}>💶 Remise calculée : {isPct ? `−${autoPct} %` : `−${ff(diff)} €`}{(d.remiseManual || '').trim() && <span style={{ color: '#fbbf24' }}> · affichage forcé : −{d.remiseManual}{isPct ? ' %' : ' €'}</span>}</div>}
+    {normal > 0 && promo > 0 && promo >= normal && <Warn>⚠ Le prix promo doit être <strong>inférieur</strong> au prix normal.</Warn>}
+  </>;
   else if (l.type === 'bon-reduction') middle = G(<PriceInp label="Valeur bon €" value={d.couponValue} onChange={v => set('couponValue', v)} />, <TextInp label="Validité" value={d.couponExpiry} onChange={v => set('couponExpiry', v)} />);
   else if (l.type === 'remise-lot') middle = <>{G(<TextInp label="Qté totale" value={d.lotQty} onChange={v => set('lotQty', v)} />, <TextInp label="Dont offert(s)" value={d.lotFree} onChange={v => set('lotFree', v)} />)}<PriceInp label="Prix du lot €" value={d.lotPrice} onChange={v => set('lotPrice', v)} />{(parseInt(d.lotFree) || 0) >= (parseInt(d.lotQty) || 0) && <Warn>⚠ Le nombre d&apos;offerts doit être inférieur à la quantité totale.</Warn>}</>;
   else middle = <>{G(<TextInp label="P1 — qté" value={d.t1q} onChange={v => set('t1q', v)} />, <PriceInp label="P1 — prix" value={d.t1p} onChange={v => set('t1p', v)} />)}{G(<TextInp label="P2 — qté" value={d.t2q} onChange={v => set('t2q', v)} />, <PriceInp label="P2 — prix" value={d.t2p} onChange={v => set('t2p', v)} />)}{G(<TextInp label="P3 — qté" value={d.t3q} onChange={v => set('t3q', v)} />, <PriceInp label="P3 — prix" value={d.t3p} onChange={v => set('t3p', v)} />)}</>;
@@ -848,6 +760,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const [showImport, setShowImport] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [pctBadge, setPctBadge] = useState('20');
   const drag = useRef<DragState | null>(null);
   const isMobile = useMobile();
   const L = layout(project);
@@ -869,9 +782,6 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     const flip = (p.labelWmm > p.labelHmm * 1.5) !== (w > h * 1.5);
     return { ...p, labelWmm: w, labelHmm: h, labels: flip ? p.labels.map(l => ({ ...l, overrides: {} })) : p.labels };
   });
-  // changement de thème : on repart des positions par défaut (compositions différentes)
-  const setTheme = (t: string) => setProject(p => p.theme === t ? p : ({ ...p, theme: t, labels: p.labels.map(l => ({ ...l, overrides: {} })) }));
-
   const current = project.labels.find(l => l.id === selLabel) || null;
   const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true, small: L.small, aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo' };
   const currentEl: El | null = current && selEl ? resolveEls(current, seedOpts).find(e => e.id === selEl) || null : null;
@@ -937,9 +847,6 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
               <button onClick={undo} disabled={!canUndo} title="Annuler (Ctrl+Z)" style={{ padding: '5px 9px', background: '#1e293b', color: canUndo ? '#cbd5e1' : '#475569', border: '1px solid #334155', borderRadius: 6, cursor: canUndo ? 'pointer' : 'default', fontSize: 13 }}>↶</button>
               <button onClick={redo} disabled={!canRedo} title="Refaire (Ctrl+Y)" style={{ padding: '5px 9px', background: '#1e293b', color: canRedo ? '#cbd5e1' : '#475569', border: '1px solid #334155', borderRadius: 6, cursor: canRedo ? 'pointer' : 'default', fontSize: 13 }}>↷</button>
             </div>
-            <div style={{ display: 'flex', gap: 4, border: '1px solid #334155', borderRadius: 7, padding: 2 }}>
-              {[{ id: 'promo', t: '🏷️ Promo' }, { id: 'premium', t: '✦ Premium' }].map(th => { const on = (project.theme || 'promo') === th.id; return <button key={th.id} onClick={() => setTheme(th.id)} title="Thème graphique" style={{ padding: '4px 10px', background: on ? (th.id === 'premium' ? '#B08D4F' : '#dc2626') : 'transparent', color: on ? '#fff' : '#94a3b8', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{th.t}</button>; })}
-            </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button onClick={() => setEditing(e => !e)} style={{ padding: '7px 12px', background: editing ? '#16a34a22' : '#1e293b', color: editing ? '#4ade80' : '#94a3b8', border: `1px solid ${editing ? '#16a34a' : '#334155'}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{editing ? '✓ Édition' : 'Aperçu'}</button>
               <button onClick={() => setShowImport(true)} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>⬆ Importer</button>
@@ -1000,6 +907,13 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
                   <SectionTitle>Logo marque & pictos</SectionTitle>
                   <label style={{ ...inp, cursor: 'pointer', textAlign: 'center', display: 'block', marginBottom: 10 }}>⬆ Logo de marque / labo<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && uploadBrandLogo(e.target.files[0])} /></label>
+                  <Field label="Pastille % personnalisée">
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input inputMode="numeric" value={pctBadge} onChange={e => setPctBadge(e.target.value.replace(/[^\d]/g, ''))} placeholder="20" style={{ ...inp, width: 64 }} />
+                      <span style={{ color: '#64748b', fontSize: 13 }}>%</span>
+                      <button onClick={() => pctBadge && addBadge(`-${pctBadge}%`, '#dc2626')} style={{ flex: 1, padding: '7px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 12, fontWeight: 800 }}>＋ Ajouter −{pctBadge || '…'}%</button>
+                    </div>
+                  </Field>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{BADGES.map(b => <button key={b.t} onClick={() => addBadge(b.t, b.bg)} style={{ padding: '4px 8px', background: b.bg, color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 9.5, fontWeight: 800 }}>{b.t}</button>)}</div>
                 </div>
                 {currentEl && <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 4 }}><SectionTitle>✦ Élément : {currentEl.kind === 'image' ? 'logo / image' : (currentEl.text ? `« ${currentEl.text.slice(0, 18)} »` : currentEl.kind)}</SectionTitle><ElementEditor el={currentEl} patch={patchEl} /></div>}

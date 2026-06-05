@@ -20,13 +20,18 @@ export function fitSize(text: string, wFrac: number, aspect: number, base: numbe
   return Math.round(Math.max(floor, Math.min(base, cap)) * 1000) / 1000;
 }
 
-/** Décompose un prix promo en partie entière / centimes + remise immédiate. */
+/** Formate une remise en euros : 5 → "5", 0.5 → "0,50", 2.9 → "2,90". */
+export const fr = (n: number) => (Number.isInteger(n) ? String(n) : ff(n));
+
+/** Décompose un prix promo en partie entière / centimes + remise immédiate (€ et %). */
 export function priceParts(normalStr: string, promoStr: string) {
   const promo = pf(promoStr), normal = pf(normalStr);
   const intp = Math.floor(promo).toString();
   const cents = Math.round((promo - Math.floor(promo)) * 100).toString().padStart(2, '0');
-  const remise = normal > promo ? Math.round(normal - promo).toString() : '';
-  return { promo, normal, intp, cents, remise };
+  const diff = normal > promo ? Math.round((normal - promo) * 100) / 100 : 0;
+  const remise = diff > 0 ? fr(diff) : '';
+  const pct = normal > 0 && diff > 0 ? Math.round((diff / normal) * 100).toString() : '';
+  return { promo, normal, intp, cents, remise, pct };
 }
 
 /** Nb de colonnes / lignes / étiquettes par feuille pour un tuilage. */
