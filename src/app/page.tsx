@@ -845,8 +845,14 @@ function cellToStr(v: unknown): string {
 }
 async function readXlsx(file: File): Promise<string[][]> {
   const mod = await import('read-excel-file/browser');
-  const rows = (await mod.default(file)) as unknown as unknown[][];
-  return rows.map(r => r.map(cellToStr)).filter(r => r.some(c => c.length));
+  // read-excel-file v9 renvoie [{ sheet, data }] ; on prend la 1ʳᵉ feuille.
+  // (compat : certaines versions renvoient directement les lignes.)
+  const result = (await mod.default(file)) as unknown;
+  let rows: unknown[] = Array.isArray(result) ? result : [];
+  if (rows.length && !Array.isArray(rows[0]) && typeof rows[0] === 'object' && rows[0] !== null && 'data' in (rows[0] as object)) {
+    rows = ((rows[0] as { data?: unknown[] }).data) || [];
+  }
+  return rows.map(r => (Array.isArray(r) ? r : []).map(cellToStr)).filter(r => r.some(c => c.length));
 }
 async function readTextSmart(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
