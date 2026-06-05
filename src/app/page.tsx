@@ -182,7 +182,7 @@ function footEls(l: Label, o: SeedOpts): El[] {
   const out: El[] = [];
   const dt = dateText(l.data);
   // coordonnées de la zone logo + pied selon orientation
-  const lx = o.landscape ? 88 : 6, ly = o.landscape ? 80 : 84, lw = o.landscape ? 10 : 17, lh = o.landscape ? 16 : 9;
+  const lx = o.landscape ? 88 : 6, ly = o.landscape ? 80 : 84, lw = o.landscape ? 10 : 17;
   if (!o.small) {
     if (o.landscape) {
       if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 3, y: 82, w: 55, size: 0.06, color: DA.band, weight: 700, align: 'left' });
@@ -192,12 +192,8 @@ function footEls(l: Label, o: SeedOpts): El[] {
       if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 26, y: 92, w: 60, size: 0.016, color: DA.ink, weight: 500, align: 'left' });
     }
   }
-  // EMPLACEMENT LOGO (image si dispo, sinon placeholder visible en édition)
+  // LOGO : affiché uniquement si un logo a été téléversé — aucun emplacement vide.
   if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: lx, y: ly, w: lw, size: 0, color: '#000', weight: 400, align: 'left' });
-  else if (o.editing) {
-    out.push({ ...B, id: 'logoBox', kind: 'box', x: lx, y: ly, w: lw, h: lh, bg: 'transparent', border: '1.5px dashed rgba(0,0,0,0.28)', radius: 6, size: 0, color: '#000', weight: 400, align: 'left' });
-    out.push({ ...B, id: 'logoTxt', kind: 'text', text: '📷 LOGO', x: lx, y: ly + lh * 0.32, w: lw, size: o.landscape ? 0.07 : 0.02, color: 'rgba(0,0,0,0.4)', weight: 700, align: 'center' });
-  }
   return out;
 }
 
