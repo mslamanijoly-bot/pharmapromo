@@ -1297,6 +1297,8 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const setBg = (c: string) => { if (current) updateLabel(current.id, l => ({ ...l, bg: c })); };
   // Format propre à l'étiquette sélectionnée (null = comme la planche). Reset des positions.
   const setLabelSize = (w: number | null, h: number | null) => { if (!current) return; updateLabel(current.id, l => { const nl: Label = { ...l, overrides: {} }; if (w && h) { nl.wMm = w; nl.hMm = h; } else { delete nl.wMm; delete nl.hMm; } return nl; }); setSelEl(null); };
+  // Édition par lot : applique le format de l'étiquette courante à TOUTES.
+  const applyFormatToAll = () => { if (!current) return; const w = current.wMm, h = current.hMm; setProject(p => ({ ...p, labels: p.labels.map(l => { const nl: Label = { ...l, overrides: {} }; if (w && h) { nl.wMm = w; nl.hMm = h; } else { delete nl.wMm; delete nl.hMm; } return nl; }) })); };
   const addLabel = () => { const t = current?.type || 'prix-promo'; const nl = newLabel(t); setProject(p => ({ ...p, labels: [...p.labels, nl] })); setSelLabel(nl.id); setSelEl(null); };
   const duplicateLabel = () => { if (!current) return; const copy: Label = { ...current, id: uid(), overrides: { ...current.overrides }, extra: current.extra.map(e => ({ ...e })) }; setProject(p => ({ ...p, labels: [...p.labels, copy] })); setSelLabel(copy.id); };
   const deleteLabel = () => { if (!current) return; setProject(p => ({ ...p, labels: p.labels.filter(l => l.id !== current.id) })); setSelLabel(null); setSelEl(null); };
@@ -1434,6 +1436,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                     <option value="">Comme la planche ({project.labelWmm}×{project.labelHmm} mm)</option>
                     {FORMATS.map(f => <option key={f.id} value={`${f.w}x${f.h}`}>{f.name} — {f.w}×{f.h} mm</option>)}
                   </select>
+                  {project.labels.length > 1 && <button onClick={applyFormatToAll} style={{ width: '100%', marginTop: 6, padding: '6px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>↪ Appliquer ce format aux {project.labels.length} étiquettes</button>}
                 </Field>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}><SectionTitle>Contenu</SectionTitle><ContentForm l={current} set={setData} /></div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}><SectionTitle>Couleurs</SectionTitle><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><ColorRow label="Cercle / accent" value={current.accent} onChange={setAccent} /><ColorRow label="Fond" value={current.bg} onChange={setBg} /></div></div>
