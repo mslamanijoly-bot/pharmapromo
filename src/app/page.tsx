@@ -722,7 +722,29 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
       </Field>
       {el.strike && <Slider label="Épaisseur du trait barré" value={Math.round((el.strikeW ?? 0.05) * 1000) / 10} min={0.5} max={12} step={0.5} suffix="%" onChange={v => patch({ strikeW: v / 100 })} />}
     </>)}
-    {el.kind === 'box' && <ColorRow label="Couleur" value={typeof el.bg === 'string' && el.bg.startsWith('#') ? el.bg : '#D81E27'} onChange={c => patch({ bg: c })} />}
+    {el.kind === 'box' && (() => {
+      const outline = !el.bg || el.bg === 'transparent';
+      const curCol = (el.bg && el.bg.startsWith('#')) ? el.bg : (el.border?.match(/#[0-9a-fA-F]{3,6}/)?.[0] || '#0E7A4D');
+      const setCol = (c: string) => outline ? patch({ bg: 'transparent', border: `3px solid ${c}` }) : patch({ bg: c, border: undefined });
+      const tg = (on: boolean): CSSProperties => ({ flex: 1, padding: '6px', background: on ? '#16a34a' : '#1e293b', color: on ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700 });
+      return (<>
+        <Field label="Style">
+          <div style={{ display: 'flex', gap: 5 }}>
+            <button onClick={() => patch({ bg: curCol, border: undefined })} style={tg(!outline)}>Rempli</button>
+            <button onClick={() => patch({ bg: 'transparent', border: `3px solid ${curCol}` })} style={tg(outline)}>Contour</button>
+          </div>
+        </Field>
+        <Field label="Couleur">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+            {TEXT_COLORS.map(c => { const on = curCol.toLowerCase() === c.toLowerCase(); return <button key={c} onClick={() => setCol(c)} title={c} style={{ width: 24, height: 24, borderRadius: 5, background: c, border: on ? '2px solid #16a34a' : '1px solid #475569', cursor: 'pointer', padding: 0, boxShadow: on ? '0 0 0 2px #16a34a55' : 'none' }} />; })}
+            <input type="color" value={curCol.length === 7 ? curCol : '#0E7A4D'} onChange={e => setCol(e.target.value)} style={{ width: 26, height: 24, border: '1px solid #475569', borderRadius: 5, background: 'none', cursor: 'pointer', padding: 2 }} title="Couleur personnalisée" />
+          </div>
+        </Field>
+        <Slider label={el.shape === 'circle' ? 'Diamètre' : 'Largeur'} value={Math.round(el.w || 20)} min={1} max={100} step={1} suffix="%" onChange={v => patch({ w: v })} />
+        {el.shape !== 'circle' && <Slider label="Hauteur / épaisseur" value={Math.round((el.h ?? 10) * 10) / 10} min={0.2} max={100} step={0.2} suffix="%" onChange={v => patch({ h: v })} />}
+        {el.shape !== 'circle' && <Slider label="Coins arrondis" value={el.radius || 0} min={0} max={50} step={1} suffix="px" onChange={v => patch({ radius: v })} />}
+      </>);
+    })()}
     {el.kind === 'image' && <Slider label="Largeur" value={Math.round(el.w || 28)} min={4} max={90} step={1} suffix="%" onChange={v => patch({ w: v })} />}
     <Slider label="Rotation" value={el.rot} min={-30} max={30} step={1} suffix="°" onChange={v => patch({ rot: v })} />
     <div style={{ fontSize: 10, color: '#64748b', marginTop: 6, fontFamily: SYS }}>Position : glissez l&apos;élément sur l&apos;étiquette ✋</div>
@@ -978,6 +1000,20 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     setSelLabel(target.id); setSelEl(e.id); setEditId(e.id);
     if (isMobile) setPanelOpen(true);
   };
+  // Ajout d'une forme simple : carré, rond ou ligne (déplaçable / redimensionnable / supprimable).
+  const addShape = (shape: 'rect' | 'circle' | 'line') => {
+    const target = current || project.labels[project.labels.length - 1];
+    if (!target) return;
+    const asp = project.labelWmm / project.labelHmm;
+    const base = { id: 's' + uid(), kind: 'box' as ElKind, size: 0, font: SYS, color: '#0E7A4D', weight: 400, align: 'left' as Align, rot: 0, removable: true, bg: '#0E7A4D' };
+    let e: El;
+    if (shape === 'circle') e = { ...base, x: 38, y: 38, w: 24, shape: 'circle' };
+    else if (shape === 'line') e = { ...base, x: 25, y: 50, w: 50, h: 0.8, radius: 999 };
+    else e = { ...base, x: 38, y: 40, w: 24, h: Math.round(24 * asp * 10) / 10, radius: 4 };
+    updateLabel(target.id, l => ({ ...l, extra: [...l.extra, e] }));
+    setSelLabel(target.id); setSelEl(e.id);
+    if (isMobile) setPanelOpen(true);
+  };
   // Réaffiche tous les blocs du modèle qui avaient été masqués.
   const restoreHidden = () => { if (!current) return; updateLabel(current.id, l => { const ov: Record<string, Partial<El>> = {}; for (const [k, v] of Object.entries(l.overrides)) { const r = { ...v }; delete r.hidden; ov[k] = r; } return { ...l, overrides: ov }; }); };
   const hiddenCount = current ? Object.values(current.overrides).filter(o => o.hidden).length : 0;
@@ -1101,6 +1137,9 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
                   <SectionTitle>Blocs</SectionTitle>
                   <button onClick={() => addTextBlock()} style={{ width: '100%', padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 800, marginBottom: 8 }}>＋ Bloc de texte</button>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                    {[{ s: 'rect' as const, t: '⬛ Carré' }, { s: 'circle' as const, t: '⚫ Rond' }, { s: 'line' as const, t: '➖ Ligne' }].map(b => <button key={b.s} onClick={() => addShape(b.s)} style={{ flex: 1, padding: '8px 4px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{b.t}</button>)}
+                  </div>
                   {hiddenCount > 0 && <button onClick={restoreHidden} style={{ width: '100%', padding: '7px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>↺ Réafficher {hiddenCount} bloc{hiddenCount > 1 ? 's' : ''} masqué{hiddenCount > 1 ? 's' : ''}</button>}
                   {(() => {
                     const blocks = resolveEls(current, seedOpts).filter(e => !e.hidden && (e.kind === 'text' || e.kind === 'pill' || e.kind === 'image'));
