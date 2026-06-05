@@ -77,8 +77,10 @@ const WATERMARK = (() => {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 })();
 
-// Style « Officine » : blanc + vert pharmacie — passe-partout, premium, économe à l'impression
-const OFFI = { bg: '#FFFFFF', green: '#0E7A4D', greenDark: '#0A5C3A', greenSoft: '#E7F2EC', ink: '#1C2B23', old: '#9AA7A0', muted: '#6B7B72', white: '#FFFFFF' };
+// Style « Officine » : 100 % vert (identité pharmacie) + un seul accent « promo »
+// (rouge = déclencheur d'achat) réservé au prix et au −%. Logique merchandising :
+// le vert installe la confiance, le rouge attire l'œil sur la bonne affaire.
+const OFFI = { bg: '#FFFFFF', green: '#0E7A4D', greenDark: '#0A5C3A', greenSoft: '#E7F2EC', ink: '#1C2B23', old: '#9AA7A0', muted: '#6B7B72', white: '#FFFFFF', promo: '#D62828' };
 
 const TYPES: { id: PromoType; label: string; icon: string; color: string }[] = [
   { id: 'prix-promo',    label: 'Prix Promo',       icon: '🏷️', color: '#D81E27' },
@@ -223,26 +225,26 @@ function officinePromoPortrait(l: Label, o: SeedOpts): El[] {
     { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 8, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
     { ...B, id: 'cross', kind: 'text', text: '✚', x: 4, y: 1.7, size: 0.038, color: OFFI.white, weight: 900, align: 'left' },
     { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 2.2, w: 100, size: fitSize(d.category, 0.9, asp, 0.028, 1, 0.015), color: OFFI.white, weight: 800, align: 'center', track: 0.16 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 12, w: 88, size: fitSize(d.product, 0.86, asp, 0.07, 2, 0.04), color: OFFI.ink, weight: 900, align: 'center' },
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 12, w: 88, size: fitSize(d.product, 0.86, asp, 0.07, 2, 0.04), color: OFFI.greenDark, weight: 900, align: 'center' },
     { ...B, id: 'rule', kind: 'box', x: 42, y: 25, w: 16, h: 0.5, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
   ];
   if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 28.5, w: 100, size: 0.032, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.05 });
-  // Prix vert (peu d'encre : juste les chiffres sur blanc)
+  // Prix = accent promo (rouge) : le point focal de l'affiche
   out.push(
-    { ...B, id: 'priceInt', kind: 'text', text: intp, x: 8, y: 33, size: 0.235, color: OFFI.green, weight: 900, align: 'left' },
-    { ...B, id: 'euro', kind: 'text', text: '€', x: 46, y: 36, size: 0.08, color: OFFI.green, weight: 900, align: 'left' },
-    { ...B, id: 'cents', kind: 'text', text: cents, x: 46, y: 47, size: 0.09, color: OFFI.green, weight: 900, align: 'left' },
+    { ...B, id: 'priceInt', kind: 'text', text: intp, x: 8, y: 33, size: 0.235, color: OFFI.promo, weight: 900, align: 'left' },
+    { ...B, id: 'euro', kind: 'text', text: '€', x: 46, y: 36, size: 0.08, color: OFFI.promo, weight: 900, align: 'left' },
+    { ...B, id: 'cents', kind: 'text', text: cents, x: 46, y: 47, size: 0.09, color: OFFI.promo, weight: 900, align: 'left' },
   );
-  // Pastille −% : disque vert sobre à droite
+  // Pastille −% : disque rouge (accent promo) à droite
   if (pctVal) out.push(
-    { ...B, id: 'burst', kind: 'box', shape: 'circle', x: 62, y: 31, w: 33, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left', shadow: true },
+    { ...B, id: 'burst', kind: 'box', shape: 'circle', x: 62, y: 31, w: 33, bg: OFFI.promo, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true },
     { ...B, id: 'burstTxt', kind: 'text', text: `-${pctVal}%`, x: 62, y: 40, w: 33, size: 0.08, color: OFFI.white, weight: 900, align: 'center' },
   );
   if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 60, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: OFFI.muted, weight: 600, align: 'center', italic: true });
-  // Barre d'économie : fond vert très clair (économe en encre)
+  // Barre d'économie : pastille vert clair (économe en encre), montant en rouge promo
   if (econ) out.push(
     { ...B, id: 'saveBox', kind: 'box', x: 16, y: 68, w: 68, h: 8, bg: OFFI.greenSoft, radius: 999, size: 0, color: OFFI.greenSoft, weight: 400, align: 'left' },
-    { ...B, id: 'saveTxt', kind: 'text', text: `VOUS ÉCONOMISEZ ${econ}`, x: 16, y: 70.2, w: 68, size: 0.028, color: OFFI.green, weight: 900, align: 'center', track: 0.03 },
+    { ...B, id: 'saveTxt', kind: 'text', text: `VOUS ÉCONOMISEZ ${econ}`, x: 16, y: 70.2, w: 68, size: 0.028, color: OFFI.promo, weight: 900, align: 'center', track: 0.03 },
   );
   out.push({ ...B, id: 'bottomRule', kind: 'box', x: 14, y: 84, w: 72, h: 0.35, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' });
   out.push({ ...B, id: 'urgency', kind: 'text', text: dt || 'Offre dans la limite des stocks disponibles', x: 6, y: 86, w: 88, size: 0.022, color: OFFI.green, weight: 700, align: 'center', track: 0.03 });
