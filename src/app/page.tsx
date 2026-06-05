@@ -357,15 +357,41 @@ function renderEl(e: El, H: number): CSSProperties {
 //  VUE ÉTIQUETTE
 // ──────────────────────────────────────────────────────────────────────
 
+// Saisie de texte directement dans le bloc, sur l'étiquette (non contrôlé : pas de saut de curseur).
+function EditableText({ initial, onCommit, onCancel }: { initial: string; onCommit: (t: string) => void; onCancel: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const n = ref.current; if (!n) return;
+    n.focus();
+    const r = document.createRange(); r.selectNodeContents(n);
+    const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r);
+  }, []);
+  return (
+    <div ref={ref} contentEditable suppressContentEditableWarning
+      onPointerDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      onKeyDown={e => {
+        e.stopPropagation();
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onCommit(ref.current?.innerText || ''); }
+        else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+      }}
+      onBlur={() => onCommit(ref.current?.innerText || '')}
+      style={{ outline: '2px solid #16a34a', outlineOffset: 2, cursor: 'text', whiteSpace: 'pre-wrap', minWidth: 8 }}
+    >{initial}</div>
+  );
+}
+
 interface DragState { labelId: string; elId: string; offX: number; offY: number; box: HTMLElement; }
 
-function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSelectLabel, onSelectEl, onDragStart, onDelEl, onAddText }: {
+function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSelectLabel, onSelectEl, onDragStart, onDelEl, onAddText, editId, onStartEdit, onCommitText, onEndEdit }: {
   label: Label; W: number; H: number; editing: boolean; opts: SeedOpts;
   selectedLabel: boolean; selectedEl: string | null;
   onSelectLabel: () => void; onSelectEl: (id: string) => void;
   onDragStart: (e: React.PointerEvent, labelId: string, elId: string, el: El) => void;
   onDelEl: (id: string) => void;
   onAddText?: (x: number, y: number) => void;
+  editId?: string | null;
+  onStartEdit?: (id: string) => void; onCommitText?: (id: string, t: string) => void; onEndEdit?: () => void;
 }) {
   const els = resolveEls(label, opts).filter(e => !e.hidden);
   const bg = label.bg;
@@ -377,11 +403,17 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
       <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.7, pointerEvents: 'none' }} />
       {els.map(e => {
         const sel = editing && selectedEl === e.id;
+        const editable = e.kind === 'text' || e.kind === 'pill';
+        const isEd = editing && editId === e.id && editable;
         return (
-          <div key={e.id} onPointerDown={(ev) => { if (editing) { ev.stopPropagation(); onSelectEl(e.id); onDragStart(ev, label.id, e.id, e); } }}
-            style={{ ...renderEl(e, H), outline: sel ? `1.5px solid ${selColor}` : 'none', outlineOffset: 2, cursor: editing ? 'move' : 'default', userSelect: 'none', touchAction: 'none' }}>
-            {e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} /> : (e.kind === 'box' ? null : e.text)}
-            {sel && <button title="Supprimer ce bloc" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onDelEl(e.id); }} style={{ position: 'absolute', top: -10, right: -10, width: 18, height: 18, borderRadius: '50%', background: '#ef4444', color: '#fff', border: '2px solid #fff', fontSize: 11, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>}
+          <div key={e.id}
+            onPointerDown={(ev) => { if (editing && !isEd) { ev.stopPropagation(); onSelectEl(e.id); onDragStart(ev, label.id, e.id, e); } }}
+            onDoubleClick={editing && editable ? (ev) => { ev.stopPropagation(); onStartEdit?.(e.id); } : undefined}
+            style={{ ...renderEl(e, H), outline: sel && !isEd ? `1.5px solid ${selColor}` : 'none', outlineOffset: 2, cursor: editing ? (isEd ? 'text' : 'move') : 'default', userSelect: isEd ? 'text' : 'none', touchAction: 'none' }}>
+            {isEd
+              ? <EditableText initial={e.text || ''} onCommit={(t) => { onCommitText?.(e.id, t); onEndEdit?.(); }} onCancel={() => onEndEdit?.()} />
+              : (e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} /> : (e.kind === 'box' ? null : e.text))}
+            {sel && !isEd && <button title="Supprimer ce bloc" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onDelEl(e.id); }} style={{ position: 'absolute', top: -10, right: -10, width: 18, height: 18, borderRadius: '50%', background: '#ef4444', color: '#fff', border: '2px solid #fff', fontSize: 11, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>}
           </div>
         );
       })}
@@ -418,12 +450,13 @@ function layout(p: Project) {
   return { fmt, lw, lh, m, gap, header, PW, PH, pageWmm, pageHmm, usableW, perRow, capacity, landscape, small };
 }
 
-function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSelEl, onAdd, dragStart, delEl, addTextAt, forPrint }: {
+function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSelEl, onAdd, dragStart, delEl, addTextAt, editId, startEdit, commitText, endEdit, forPrint }: {
   project: Project; scale: number; editing: boolean;
   selLabel: string | null; selEl: string | null;
   setSelLabel: (id: string | null) => void; setSelEl: (id: string | null) => void;
   onAdd: () => void; dragStart: (e: React.PointerEvent, labelId: string, elId: string, el: El) => void;
-  delEl: (id: string) => void; addTextAt: (labelId: string, x: number, y: number) => void; forPrint?: boolean;
+  delEl: (id: string) => void; addTextAt: (labelId: string, x: number, y: number) => void;
+  editId?: string | null; startEdit?: (id: string) => void; commitText?: (id: string, t: string) => void; endEdit?: () => void; forPrint?: boolean;
 }) {
   const L = layout(project);
   const opts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: editing && !forPrint, small: L.small, aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo' };
@@ -435,7 +468,8 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
           <LabelView key={label.id} label={label} W={L.lw} H={L.lh} editing={editing && !forPrint} opts={opts}
             selectedLabel={selLabel === label.id} selectedEl={selLabel === label.id ? selEl : null}
             onSelectLabel={() => setSelLabel(label.id)} onSelectEl={(id) => { setSelLabel(label.id); setSelEl(id); }}
-            onDragStart={dragStart} onDelEl={delEl} onAddText={(x, y) => addTextAt(label.id, x, y)} />
+            onDragStart={dragStart} onDelEl={delEl} onAddText={(x, y) => addTextAt(label.id, x, y)}
+            editId={editId} onStartEdit={startEdit} onCommitText={commitText} onEndEdit={endEdit} />
         ))}
         {!forPrint && <button onClick={(e) => { e.stopPropagation(); onAdd(); }} style={{ width: L.lw, height: Math.min(L.lh, 220), border: '2px dashed #cbd5e1', borderRadius: 8, background: '#f8fafc', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: SYS, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}><span style={{ fontSize: 22 }}>＋</span>Ajouter</button>}
       </div>
@@ -772,6 +806,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const [showPreview, setShowPreview] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [pctBadge, setPctBadge] = useState('20');
+  const [editId, setEditId] = useState<string | null>(null);
   const drag = useRef<DragState | null>(null);
   const isMobile = useMobile();
   const L = layout(project);
@@ -800,7 +835,8 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
 
   const updateLabel = useCallback((id: string, fn: (l: Label) => Label) => setProject(p => ({ ...p, labels: p.labels.map(l => l.id === id ? fn(l) : l) })), [setProject]);
   const setData = (k: keyof LabelData, v: string) => { if (current) updateLabel(current.id, l => ({ ...l, data: { ...l.data, [k]: v } })); };
-  const patchEl = (patch: Partial<El>) => { if (!current || !selEl) return; const id = selEl; updateLabel(current.id, l => isBound(l, id) ? { ...l, overrides: { ...l.overrides, [id]: { ...l.overrides[id], ...patch } } } : { ...l, extra: l.extra.map(e => e.id === id ? { ...e, ...patch } : e) }); };
+  const patchElById = (id: string, patch: Partial<El>) => { if (!current) return; updateLabel(current.id, l => isBound(l, id) ? { ...l, overrides: { ...l.overrides, [id]: { ...l.overrides[id], ...patch } } } : { ...l, extra: l.extra.map(e => e.id === id ? { ...e, ...patch } : e) }); };
+  const patchEl = (patch: Partial<El>) => { if (selEl) patchElById(selEl, patch); };
   // Supprimer un bloc : les blocs ajoutés sont retirés, les blocs du modèle sont masqués (réversible).
   const delEl = (id: string) => { if (!current) return; updateLabel(current.id, l => isBound(l, id) ? { ...l, overrides: { ...l.overrides, [id]: { ...l.overrides[id], hidden: true } } } : { ...l, extra: l.extra.filter(e => e.id !== id) }); if (selEl === id) setSelEl(null); };
   // Ajout d'un bloc de texte libre, déplaçable / redimensionnable / supprimable.
@@ -810,7 +846,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     if (!target) return;
     const e: El = { id: 't' + uid(), kind: 'text', text: 'Nouveau texte', x, y, w: 64, size: 0.05, font: SYS, color: '#21392B', weight: 700, align: 'center', rot: 0, removable: true };
     updateLabel(target.id, l => ({ ...l, extra: [...l.extra, e] }));
-    setSelLabel(target.id); setSelEl(e.id);
+    setSelLabel(target.id); setSelEl(e.id); setEditId(e.id);
     if (isMobile) setPanelOpen(true);
   };
   // Réaffiche tous les blocs du modèle qui avaient été masqués.
@@ -883,7 +919,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
           {overflow && <div style={{ background: '#7c2d12', color: '#fed7aa', fontSize: 12, padding: '6px 16px' }}>⚠ {project.labels.length} étiquettes pour {L.capacity} emplacement(s) — réduisez la taille ou changez de format.</div>}
           <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? 8 : 28, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
             <div style={{ width: L.PW * scale, height: L.PH * scale, flexShrink: 0 }}>
-              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} />
+              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} editId={editId} startEdit={(id) => { pickEl(id); setEditId(id); }} commitText={(id, t) => patchElById(id, { text: t })} endEdit={() => setEditId(null)} />
             </div>
           </div>
         </main>
@@ -948,7 +984,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                       })}
                     </div>;
                   })()}
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 8, lineHeight: 1.5 }}>Cliquez un bloc dans la liste pour le sélectionner, ou 🗑 pour le retirer. Les blocs du modèle sont masqués (récupérables) ; les blocs ajoutés sont supprimés.</div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 8, lineHeight: 1.5 }}>✍️ <strong style={{ color: '#cbd5e1' }}>Double-cliquez un bloc sur l&apos;étiquette pour écrire dedans</strong> (Entrée = valider, Échap = annuler). Cliquez un bloc dans la liste pour le sélectionner, 🗑 pour le retirer.</div>
                 </div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
                   <SectionTitle>Logo marque & pictos</SectionTitle>
