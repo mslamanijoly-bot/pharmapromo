@@ -1095,7 +1095,7 @@ function PrintPreviewModal({ project, setProject, onClose }: { project: Project;
 //  BIBLIOTHÈQUE + LOGIN + ORCHESTRATION
 // ──────────────────────────────────────────────────────────────────────
 
-function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onRename: (id: string, pharmacy: string, plan: string) => void; onLogout: () => void; }) {
+function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onExport, onImport, onLogout }: { metas: Meta[]; mode: 'server' | 'local'; onOpen: (id: string) => void; onNew: () => void; onDelete: (id: string) => void; onRename: (id: string, pharmacy: string, plan: string) => void; onExport: () => void; onImport: (file: File) => void; onLogout: () => void; }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
   const [draftPlan, setDraftPlan] = useState('');
@@ -1110,7 +1110,12 @@ function Library({ metas, mode, onOpen, onNew, onDelete, onRename, onLogout }: {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ fontSize: 11, color: mode === 'server' ? '#4ade80' : '#f59e0b' }}>● {mode === 'server' ? 'Cloud partagé' : 'Local'}</span>{mode === 'server' && <button onClick={onLogout} style={{ padding: '6px 12px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Déconnexion</button>}</div>
       </div>
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}><h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Planches promotionnelles</h1><button onClick={onNew} style={{ marginLeft: 'auto', padding: '10px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 800, boxShadow: '0 2px 12px #16a34a55' }}>＋ Nouvelle planche</button></div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 8, flexWrap: 'wrap' }}>
+          <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, marginRight: 'auto' }}>Planches promotionnelles</h1>
+          <button onClick={onExport} disabled={!metas.length} title="Télécharger une sauvegarde (.json) de toutes vos planches" style={{ padding: '10px 14px', background: '#1e293b', color: metas.length ? '#cbd5e1' : '#475569', border: '1px solid #334155', borderRadius: 8, cursor: metas.length ? 'pointer' : 'default', fontSize: 13, fontWeight: 700 }}>⬇ Sauvegarder</button>
+          <label title="Restaurer des planches depuis un fichier de sauvegarde (.json)" style={{ padding: '10px 14px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>⬆ Restaurer<input type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) { onImport(e.target.files[0]); e.target.value = ''; } }} /></label>
+          <button onClick={onNew} style={{ padding: '10px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 800, boxShadow: '0 2px 12px #16a34a55' }}>＋ Nouvelle planche</button>
+        </div>
         {metas.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#475569', border: '2px dashed #1e293b', borderRadius: 12 }}>Aucune planche. Cliquez <strong style={{ color: '#94a3b8' }}>Nouvelle planche</strong> pour démarrer.</div>
         ) : (
@@ -1206,6 +1211,29 @@ export default function Home() {
   const newPlanche = async () => { const id = await store.create(defaultProject()); await openPlanche(id); refreshList(store); };
   const deletePlanche = async (id: string) => { await store.remove(id); refreshList(store); };
   const renamePlanche = async (id: string, pharmacy: string, plan: string) => { const p = await store.get(id); if (!p) return; await store.save(id, { ...p, pharmacy, plan }); refreshList(store); };
+
+  // Sauvegarde : télécharge toutes les planches en un seul fichier JSON.
+  const exportAll = async () => {
+    const planches = (await Promise.all(metas.map(m => store.get(m.id)))).filter(Boolean);
+    const data = { app: 'pharmapromo', version: 1, exportedAt: Date.now(), planches };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `pharmapromo-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  };
+  // Restauration : recrée les planches d'un fichier de sauvegarde (sans écraser l'existant).
+  const importBackup = async (file: File) => {
+    try {
+      const data = JSON.parse(await file.text());
+      const planches: unknown[] = Array.isArray(data) ? data : (data?.planches ?? []);
+      if (!Array.isArray(planches) || !planches.length) { alert('Fichier de sauvegarde invalide ou vide.'); return; }
+      let n = 0;
+      for (const p of planches) { if (p && typeof p === 'object') { await store.create(migrate(p as Project)); n++; } }
+      await refreshList(store);
+      alert(`${n} planche(s) restaurée(s).`);
+    } catch { alert('Lecture impossible : fichier de sauvegarde invalide.'); }
+  };
   const backToLibrary = async () => { if (saveTimer.current) { clearTimeout(saveTimer.current); if (currentId && projectRef.current) await store.save(currentId, projectRef.current); } setView('library'); setCurrentId(null); setProjectState(null); refreshList(store); };
 
   const setProject = useCallback((fn: (p: Project) => Project) => {
@@ -1252,5 +1280,5 @@ export default function Home() {
   if (view === 'loading') return <div style={{ minHeight: '100vh', background: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontFamily: SYS }}>Chargement…</div>;
   if (view === 'login') return <Login onSubmit={doLogin} error={loginErr} />;
   if (view === 'studio' && project) return <Studio project={project} setProject={setProject} onBack={backToLibrary} saving={saving} mode={mode} undo={undo} redo={redo} canUndo={past.current.length > 0} canRedo={future.current.length > 0} />;
-  return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onRename={renamePlanche} onLogout={logout} />;
+  return <Library metas={metas} mode={mode} onOpen={openPlanche} onNew={newPlanche} onDelete={deletePlanche} onRename={renamePlanche} onExport={exportAll} onImport={importBackup} onLogout={logout} />;
 }
