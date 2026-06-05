@@ -356,18 +356,20 @@ function renderEl(e: El, H: number): CSSProperties {
 
 interface DragState { labelId: string; elId: string; offX: number; offY: number; box: HTMLElement; }
 
-function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSelectLabel, onSelectEl, onDragStart, onDelEl }: {
+function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSelectLabel, onSelectEl, onDragStart, onDelEl, onAddText }: {
   label: Label; W: number; H: number; editing: boolean; opts: SeedOpts;
   selectedLabel: boolean; selectedEl: string | null;
   onSelectLabel: () => void; onSelectEl: (id: string) => void;
   onDragStart: (e: React.PointerEvent, labelId: string, elId: string, el: El) => void;
   onDelEl: (id: string) => void;
+  onAddText?: (x: number, y: number) => void;
 }) {
   const els = resolveEls(label, opts).filter(e => !e.hidden);
   const bg = label.bg;
   const selColor = label.accent;
   return (
     <div data-labelbox onClick={(ev) => { ev.stopPropagation(); onSelectLabel(); }}
+      onDoubleClick={editing && onAddText ? (ev) => { ev.stopPropagation(); const r = (ev.currentTarget as HTMLElement).getBoundingClientRect(); onAddText(Math.max(0, ((ev.clientX - r.left) / r.width) * 100 - 32), Math.max(0, ((ev.clientY - r.top) / r.height) * 100 - 2)); } : undefined}
       style={{ position: 'relative', width: W, height: H, background: bg, border: editing ? `1px solid ${selectedLabel ? selColor : 'rgba(0,0,0,0.08)'}` : 'none', borderRadius: editing ? 6 : 0, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${selColor}44` : 'none', flexShrink: 0, boxSizing: 'border-box' }}>
       <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.7, pointerEvents: 'none' }} />
       {els.map(e => {
@@ -413,12 +415,12 @@ function layout(p: Project) {
   return { fmt, lw, lh, m, gap, header, PW, PH, pageWmm, pageHmm, usableW, perRow, capacity, landscape, small };
 }
 
-function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSelEl, onAdd, dragStart, delEl, forPrint }: {
+function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSelEl, onAdd, dragStart, delEl, addTextAt, forPrint }: {
   project: Project; scale: number; editing: boolean;
   selLabel: string | null; selEl: string | null;
   setSelLabel: (id: string | null) => void; setSelEl: (id: string | null) => void;
   onAdd: () => void; dragStart: (e: React.PointerEvent, labelId: string, elId: string, el: El) => void;
-  delEl: (id: string) => void; forPrint?: boolean;
+  delEl: (id: string) => void; addTextAt: (labelId: string, x: number, y: number) => void; forPrint?: boolean;
 }) {
   const L = layout(project);
   const opts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: editing && !forPrint, small: L.small, aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo' };
@@ -430,7 +432,7 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
           <LabelView key={label.id} label={label} W={L.lw} H={L.lh} editing={editing && !forPrint} opts={opts}
             selectedLabel={selLabel === label.id} selectedEl={selLabel === label.id ? selEl : null}
             onSelectLabel={() => setSelLabel(label.id)} onSelectEl={(id) => { setSelLabel(label.id); setSelEl(id); }}
-            onDragStart={dragStart} onDelEl={delEl} />
+            onDragStart={dragStart} onDelEl={delEl} onAddText={(x, y) => addTextAt(label.id, x, y)} />
         ))}
         {!forPrint && <button onClick={(e) => { e.stopPropagation(); onAdd(); }} style={{ width: L.lw, height: Math.min(L.lh, 220), border: '2px dashed #cbd5e1', borderRadius: 8, background: '#f8fafc', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: SYS, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}><span style={{ fontSize: 22 }}>＋</span>Ajouter</button>}
       </div>
@@ -795,7 +797,15 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   // Supprimer un bloc : les blocs ajoutés sont retirés, les blocs du modèle sont masqués (réversible).
   const delEl = (id: string) => { if (!current) return; updateLabel(current.id, l => isBound(l, id) ? { ...l, overrides: { ...l.overrides, [id]: { ...l.overrides[id], hidden: true } } } : { ...l, extra: l.extra.filter(e => e.id !== id) }); if (selEl === id) setSelEl(null); };
   // Ajout d'un bloc de texte libre, déplaçable / redimensionnable / supprimable.
-  const addTextBlock = () => { if (!current) return; const e: El = { id: 't' + uid(), kind: 'text', text: 'Nouveau texte', x: 18, y: 45, w: 64, size: 0.05, font: SYS, color: '#21392B', weight: 700, align: 'center', rot: 0, removable: true }; updateLabel(current.id, l => ({ ...l, extra: [...l.extra, e] })); setSelEl(e.id); };
+  // Sans cible précise : étiquette sélectionnée, sinon la dernière. Position en % (défaut centre).
+  const addTextBlock = (labelId?: string, x = 18, y = 45) => {
+    const target = labelId ? project.labels.find(l => l.id === labelId) : (current || project.labels[project.labels.length - 1]);
+    if (!target) return;
+    const e: El = { id: 't' + uid(), kind: 'text', text: 'Nouveau texte', x, y, w: 64, size: 0.05, font: SYS, color: '#21392B', weight: 700, align: 'center', rot: 0, removable: true };
+    updateLabel(target.id, l => ({ ...l, extra: [...l.extra, e] }));
+    setSelLabel(target.id); setSelEl(e.id);
+    if (isMobile) setPanelOpen(true);
+  };
   // Réaffiche tous les blocs du modèle qui avaient été masqués.
   const restoreHidden = () => { if (!current) return; updateLabel(current.id, l => { const ov: Record<string, Partial<El>> = {}; for (const [k, v] of Object.entries(l.overrides)) { const r = { ...v }; delete r.hidden; ov[k] = r; } return { ...l, overrides: ov }; }); };
   const hiddenCount = current ? Object.values(current.overrides).filter(o => o.hidden).length : 0;
@@ -859,13 +869,14 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
               <button onClick={() => setEditing(e => !e)} style={{ padding: '7px 12px', background: editing ? '#16a34a22' : '#1e293b', color: editing ? '#4ade80' : '#94a3b8', border: `1px solid ${editing ? '#16a34a' : '#334155'}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{editing ? '✓ Édition' : 'Aperçu'}</button>
               <button onClick={() => setShowImport(true)} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>⬆ Importer</button>
               <button onClick={addLabel} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Étiquette</button>
+              <button onClick={() => addTextBlock()} title="Ajouter un bloc de texte (ou double-cliquez sur l'étiquette)" style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Texte</button>
               <button onClick={() => setShowPreview(true)} style={{ padding: '7px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 800, boxShadow: '0 2px 10px #16a34a66' }}>🖨 Imprimer / PDF</button>
             </div>
           </div>
           {overflow && <div style={{ background: '#7c2d12', color: '#fed7aa', fontSize: 12, padding: '6px 16px' }}>⚠ {project.labels.length} étiquettes pour {L.capacity} emplacement(s) — réduisez la taille ou changez de format.</div>}
           <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? 8 : 28, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
             <div style={{ width: L.PW * scale, height: L.PH * scale, flexShrink: 0 }}>
-              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} />
+              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} />
             </div>
           </div>
         </main>
@@ -914,7 +925,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}><SectionTitle>Couleurs</SectionTitle><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><ColorRow label="Cercle / accent" value={current.accent} onChange={setAccent} /><ColorRow label="Fond" value={current.bg} onChange={setBg} /></div></div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
                   <SectionTitle>Blocs</SectionTitle>
-                  <button onClick={addTextBlock} style={{ width: '100%', padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 800, marginBottom: 8 }}>＋ Bloc de texte</button>
+                  <button onClick={() => addTextBlock()} style={{ width: '100%', padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 800, marginBottom: 8 }}>＋ Bloc de texte</button>
                   {hiddenCount > 0 && <button onClick={restoreHidden} style={{ width: '100%', padding: '7px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>↺ Réafficher {hiddenCount} bloc{hiddenCount > 1 ? 's' : ''} masqué{hiddenCount > 1 ? 's' : ''}</button>}
                   <div style={{ fontSize: 11, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>Cliquez un bloc pour le déplacer, le redimensionner (taille de police) ou le supprimer (× rouge). Les blocs du modèle masqués sont récupérables ci-dessus.</div>
                 </div>
