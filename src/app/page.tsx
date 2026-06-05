@@ -224,7 +224,8 @@ function offiHeader(d: LabelData, asp: number): El[] {
 function offiFooter(l: Label, o: SeedOpts): El[] {
   const out: El[] = [];
   const dt = dateText(l.data);
-  out.push({ ...B, id: 'urgency', kind: 'text', text: dt || 'Offre dans la limite des stocks disponibles', x: 12, y: 90, w: 76, size: 0.02, color: OFFI.green, weight: 700, align: 'center', track: 0.02 });
+  // Petits formats (rayon / petite) : on retire validité + mentions pour rester lisible.
+  if (!o.small) out.push({ ...B, id: 'urgency', kind: 'text', text: dt || 'Offre dans la limite des stocks disponibles', x: 12, y: 90, w: 76, size: 0.02, color: OFFI.green, weight: 700, align: 'center', track: 0.02 });
   if (!o.small && o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 8, y: 95.5, w: 84, size: 0.013, color: OFFI.muted, weight: 400, align: 'center' });
   if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 86, y: 85, w: 10, size: 0, color: '#000', weight: 400, align: 'left' });
   return out;
@@ -322,8 +323,37 @@ function officineSeed(l: Label, o: SeedOpts): El[] {
   return officinePrixPromo(l, o);
 }
 
+// ── Officine RÉGLETTE (paysage) : bande verte identité à gauche, prix à droite ──
+function officineReglette(l: Label, o: SeedOpts): El[] {
+  const d = l.data, asp = o.aspect || 2.5;
+  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
+  const manual = (d.remiseManual || '').trim();
+  let priceTxt = `${d.promoPrice} €`, oldTxt = normal > pf(d.promoPrice) ? `${d.normalPrice} €` : '', tag = '';
+  let disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
+  if (l.type === 'bon-reduction') { priceTxt = `${d.couponValue} €`; oldTxt = ''; disc = ''; tag = 'BON DE RÉDUCTION'; }
+  else if (l.type === 'remise-lot') { priceTxt = `${d.lotPrice} €`; oldTxt = ''; disc = `+${Math.max(1, parseInt(d.lotFree) || 1)} OFFERT`; tag = 'LOT'; }
+  else if (l.type === 'multi-achat') { priceTxt = `${d.t3p || d.t1p} €`; oldTxt = ''; disc = ''; tag = 'MULTI-ACHAT'; }
+  const out: El[] = [
+    { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: OFFI.bg, size: 0, color: OFFI.bg, weight: 400, align: 'left' },
+    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 54, h: 100, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
+    { ...B, id: 'cross', kind: 'text', text: '✚', x: 3, y: 7, size: 0.14, color: OFFI.white, weight: 900, align: 'left' },
+    { ...B, id: 'cat', kind: 'text', text: d.category, x: 14, y: 10, w: 38, size: fitSize(d.category, 0.36, asp, 0.1, 1, 0.05), color: OFFI.white, weight: 800, align: 'left', track: 0.06 },
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 33, w: 48, size: fitSize(d.product, 0.46, asp, 0.16, 3, 0.075), color: OFFI.white, weight: 900, align: 'left' },
+  ];
+  if (tag) out.push({ ...B, id: 'tag', kind: 'text', text: tag, x: 56, y: 9, w: 42, size: 0.07, color: OFFI.green, weight: 800, align: 'center', track: 0.1 });
+  if (oldTxt) out.push({ ...B, id: 'old', kind: 'text', text: oldTxt, x: 55, y: 18, w: 44, size: 0.085, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.04 });
+  out.push({ ...B, id: 'price', kind: 'text', text: priceTxt, x: 54, y: 33, w: 45, size: fitSize(priceTxt, 0.42, asp, 0.34, 1, 0.18), color: OFFI.promo, weight: 900, align: 'center' });
+  if (disc) out.push(
+    { ...B, id: 'burst', kind: 'box', shape: 'circle', x: 82, y: 60, w: 13, bg: OFFI.promo, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true },
+    { ...B, id: 'burstTxt', kind: 'text', text: disc, x: 82, y: 67, w: 13, size: fitSize(disc, 0.1, asp, 0.085, 1, 0.04), color: OFFI.white, weight: 900, align: 'center' },
+  );
+  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 54, y: 82, w: 30, size: fitSize(d.qtyLabel, 0.28, asp, 0.06, 1, 0.04), color: OFFI.muted, weight: 600, align: 'center', italic: true });
+  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 4, y: 82, w: 13, size: 0, color: '#000', weight: 400, align: 'left' });
+  return out;
+}
+
 function seedEls(l: Label, o: SeedOpts): El[] {
-  if (o.theme === 'officine' && !o.landscape) return officineSeed(l, o);
+  if (o.theme === 'officine') return o.landscape ? officineReglette(l, o) : officineSeed(l, o);
   const a = l.accent, d = l.data;
   const asp = o.aspect || 0.7;
   // Aplat mat, centré : pas de point lumineux blanc, léger fondu vers le bord.
