@@ -22,7 +22,7 @@ interface El {
   x: number; y: number; w?: number; h?: number;
   size: number; font: string; color: string; bg?: string;
   weight: number; align: Align; rot: number;
-  strike?: boolean; radius?: number; shape?: 'circle'; shadow?: boolean; border?: string;
+  strike?: boolean; strikeW?: number; radius?: number; shape?: 'circle'; shadow?: boolean; border?: string;
   track?: number; italic?: boolean;
   hidden?: boolean; removable?: boolean;
 }
@@ -329,6 +329,9 @@ function renderEl(e: El, H: number): CSSProperties {
     width: e.w != null ? `${e.w}%` : undefined,
     whiteSpace: e.w != null ? 'normal' : 'nowrap',
     textDecoration: e.strike ? 'line-through' : undefined,
+    // Trait du prix barré : épaisseur maîtrisée (sinon il hérite de la graisse et masque le prix).
+    textDecorationThickness: e.strike ? `${Math.max(1, fs * (e.strikeW ?? 0.05))}px` : undefined,
+    textDecorationColor: e.strike ? e.color : undefined,
     letterSpacing: e.track != null ? `${e.track}em` : (e.weight >= 800 ? '0.01em' : undefined),
     fontStyle: e.italic ? 'italic' : undefined,
   };
@@ -553,6 +556,10 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
       <Field label="Graisse"><div style={{ display: 'flex', gap: 5 }}>{[{ v: 400, t: 'Normal' }, { v: 700, t: 'Gras' }, { v: 900, t: 'Extra' }].map(g => <button key={g.v} onClick={() => patch({ weight: g.v })} style={{ flex: 1, padding: '6px', background: el.weight === g.v ? '#16a34a' : '#1e293b', color: el.weight === g.v ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: g.v }}>{g.t}</button>)}</div></Field>
       <Field label="Alignement"><div style={{ display: 'flex', gap: 5 }}>{(['left', 'center', 'right'] as Align[]).map(al => <button key={al} onClick={() => patch({ align: al })} style={{ flex: 1, padding: '6px', background: el.align === al ? '#16a34a' : '#1e293b', color: el.align === al ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 13 }}>{al === 'left' ? '⬅' : al === 'center' ? '↔' : '➡'}</button>)}</div></Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><ColorRow label="Couleur texte" value={el.color} onChange={c => patch({ color: c })} />{el.kind === 'pill' && <ColorRow label="Fond pastille" value={el.bg || '#000000'} onChange={c => patch({ bg: c })} />}</div>
+      <Field label="Texte barré (prix)">
+        <button onClick={() => patch({ strike: !el.strike })} style={{ width: '100%', padding: '6px', background: el.strike ? '#16a34a' : '#1e293b', color: el.strike ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{el.strike ? '✓ Barré activé' : 'Non barré'}</button>
+      </Field>
+      {el.strike && <Slider label="Épaisseur du trait barré" value={Math.round((el.strikeW ?? 0.05) * 1000) / 10} min={0.5} max={12} step={0.5} suffix="%" onChange={v => patch({ strikeW: v / 100 })} />}
     </>)}
     {el.kind === 'box' && <ColorRow label="Couleur" value={typeof el.bg === 'string' && el.bg.startsWith('#') ? el.bg : '#D81E27'} onChange={c => patch({ bg: c })} />}
     {el.kind === 'image' && <Slider label="Largeur" value={Math.round(el.w || 28)} min={4} max={90} step={1} suffix="%" onChange={v => patch({ w: v })} />}
