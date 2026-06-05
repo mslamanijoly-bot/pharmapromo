@@ -1129,25 +1129,28 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
             ) : (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><SectionTitle>Étiquette sélectionnée</SectionTitle><button onClick={() => { setSelLabel(null); setSelEl(null); }} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16 }}>✕</button></div>
+                <div style={{ background: '#0b1220', border: '1px solid #1e293b', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                  <SectionTitle>＋ Ajouter sur l&apos;étiquette</SectionTitle>
+                  <button onClick={() => addTextBlock()} style={{ width: '100%', padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 800, marginBottom: 6 }}>🔤 Bloc de texte</button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[{ s: 'rect' as const, t: '⬛', n: 'Carré' }, { s: 'circle' as const, t: '⚫', n: 'Rond' }, { s: 'line' as const, t: '➖', n: 'Ligne' }].map(b => <button key={b.s} onClick={() => addShape(b.s)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}><span style={{ fontSize: 16 }}>{b.t}</span>{b.n}</button>)}
+                  </div>
+                </div>
                 <Field label="Type de promotion">
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>{TYPES.map(t => { const on = current.type === t.id; return <button key={t.id} onClick={() => changeType(t.id)} style={{ padding: '7px 6px', background: on ? `${t.color}22` : '#1e293b', border: `1px solid ${on ? t.color : '#334155'}`, borderRadius: 6, cursor: 'pointer', fontSize: 10.5, fontWeight: 700, color: on ? '#f8fafc' : '#94a3b8', display: 'flex', alignItems: 'center', gap: 5 }}><span>{t.icon}</span>{t.label}</button>; })}</div>
                 </Field>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}><SectionTitle>Contenu</SectionTitle><ContentForm l={current} set={setData} /></div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}><SectionTitle>Couleurs</SectionTitle><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><ColorRow label="Cercle / accent" value={current.accent} onChange={setAccent} /><ColorRow label="Fond" value={current.bg} onChange={setBg} /></div></div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
-                  <SectionTitle>Blocs</SectionTitle>
-                  <button onClick={() => addTextBlock()} style={{ width: '100%', padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 800, marginBottom: 8 }}>＋ Bloc de texte</button>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                    {[{ s: 'rect' as const, t: '⬛ Carré' }, { s: 'circle' as const, t: '⚫ Rond' }, { s: 'line' as const, t: '➖ Ligne' }].map(b => <button key={b.s} onClick={() => addShape(b.s)} style={{ flex: 1, padding: '8px 4px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>{b.t}</button>)}
-                  </div>
+                  <SectionTitle>Blocs présents</SectionTitle>
                   {hiddenCount > 0 && <button onClick={restoreHidden} style={{ width: '100%', padding: '7px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>↺ Réafficher {hiddenCount} bloc{hiddenCount > 1 ? 's' : ''} masqué{hiddenCount > 1 ? 's' : ''}</button>}
                   {(() => {
-                    const blocks = resolveEls(current, seedOpts).filter(e => !e.hidden && (e.kind === 'text' || e.kind === 'pill' || e.kind === 'image'));
+                    const blocks = resolveEls(current, seedOpts).filter(e => !e.hidden && (e.kind === 'text' || e.kind === 'pill' || e.kind === 'image' || (e.kind === 'box' && e.removable)));
                     return <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 }}>
-                      <label style={lbl}>Tous les écrits / blocs ({blocks.length})</label>
+                      <label style={lbl}>Tous les blocs ({blocks.length})</label>
                       {blocks.map(e => {
                         const on = selEl === e.id;
-                        const name = e.kind === 'image' ? '🖼 image / logo' : (e.text?.trim() ? e.text.slice(0, 26) : '(vide)');
+                        const name = e.kind === 'image' ? '🖼 image / logo' : (e.kind === 'box' ? (e.shape === 'circle' ? '⚫ rond' : (e.h != null && e.h < 3 ? '➖ ligne' : '⬛ forme')) : (e.text?.trim() ? e.text.slice(0, 26) : '(vide)'));
                         return <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, background: on ? '#16a34a22' : '#1e293b', border: `1px solid ${on ? '#16a34a' : '#334155'}`, borderRadius: 6, padding: '5px 8px' }}>
                           <button onClick={() => pickEl(e.id)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', color: on ? '#f8fafc' : '#cbd5e1', cursor: 'pointer', fontSize: 12, fontFamily: SYS, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</button>
                           <button onClick={() => delEl(e.id)} title="Supprimer ce bloc" style={{ flexShrink: 0, width: 24, height: 24, background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 13, fontWeight: 800, lineHeight: 1 }}>🗑</button>
