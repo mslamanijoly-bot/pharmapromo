@@ -37,7 +37,7 @@ interface LabelData {
   dateStart: string; dateEnd: string;
 }
 
-interface Label { id: string; type: PromoType; accent: string; bg: string; data: LabelData; overrides: Record<string, Partial<El>>; extra: El[]; }
+interface Label { id: string; type: PromoType; accent: string; bg: string; data: LabelData; overrides: Record<string, Partial<El>>; extra: El[]; wMm?: number; hMm?: number; }
 
 interface Project {
   pharmacy: string; plan: string; logo: string | null; disclaimer: string;
@@ -149,8 +149,8 @@ const newData = (): LabelData => ({
   dateStart: '', dateEnd: '',
 });
 
-function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelData>): Label {
-  return { id: uid(), type, accent: DA.red, bg: DA.bg, data: { ...newData(), ...data }, overrides: {}, extra: [] };
+function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelData>, size?: { w: number; h: number }): Label {
+  return { id: uid(), type, accent: DA.red, bg: DA.bg, data: { ...newData(), ...data }, overrides: {}, extra: [], ...(size ? { wMm: size.w, hMm: size.h } : {}) };
 }
 
 function defaultProject(): Project {
@@ -551,16 +551,28 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
 //  LAYOUT + PLANCHE
 // ──────────────────────────────────────────────────────────────────────
 
+// Taille (mm) propre à une étiquette : override par étiquette, sinon taille de la planche.
+const sizeOf = (l: Label, p: Project) => ({ w: l.wMm ?? p.labelWmm, h: l.hMm ?? p.labelHmm });
+// Options de composition (orientation, format…) calculées pour CETTE étiquette.
+const optsFor = (l: Label, p: Project, editing: boolean): SeedOpts => {
+  const { w, h } = sizeOf(l, p);
+  return { landscape: w > h * 1.5, logo: p.logo, disclaimer: p.disclaimer, editing, small: Math.min(w, h) < 80, aspect: w / h, theme: p.theme || 'promo' };
+};
+
 function layout(p: Project) {
   const fmt = PAGE_FORMATS.find(f => f.id === p.pageFormat) || PAGE_FORMATS[0];
-  const lw = p.labelWmm * MM, lh = p.labelHmm * MM;
+  const sizes = (p.labels || []).map(l => sizeOf(l, p));
+  const first = sizes[0] || { w: p.labelWmm, h: p.labelHmm };
+  const mixed = sizes.length > 0 && !sizes.every(s => s.w === first.w && s.h === first.h);
+  const baseW = mixed ? Math.max(...sizes.map(s => s.w)) : first.w;
+  const baseH = mixed ? Math.max(...sizes.map(s => s.h)) : first.h;
+  const lw = baseW * MM, lh = baseH * MM;
   const m = MARGIN_MM * MM, gap = GAP_MM * MM, header = HEADER_MM * MM;
   let pageWmm: number, pageHmm: number, perRow: number, capacity: number;
   if (fmt.id === 'roll' || fmt.id === 'fit') {
-    // page = largeur de l'étiquette, empilage vertical
-    pageWmm = p.labelWmm; perRow = 1;
+    pageWmm = mixed ? Math.max(210, baseW) : baseW; perRow = 1;
     const n = Math.max(1, p.labels.length);
-    pageHmm = n * p.labelHmm + (n - 1) * GAP_MM;
+    pageHmm = mixed ? Math.max(297, sizes.reduce((a, s) => a + s.h + GAP_MM, 0)) : n * baseH + (n - 1) * GAP_MM;
     capacity = n;
   } else {
     pageWmm = fmt.w; pageHmm = fmt.h;
@@ -572,8 +584,8 @@ function layout(p: Project) {
   const PW = pageWmm * MM, PH = pageHmm * MM;
   const usableW = PW - m * 2;
   const landscape = lw > lh * 1.5;
-  const small = Math.min(p.labelWmm, p.labelHmm) < 80;
-  return { fmt, lw, lh, m, gap, header, PW, PH, pageWmm, pageHmm, usableW, perRow, capacity, landscape, small };
+  const small = Math.min(baseW, baseH) < 80;
+  return { fmt, lw, lh, m, gap, header, PW, PH, pageWmm, pageHmm, usableW, perRow, capacity, landscape, small, mixed };
 }
 
 function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSelEl, onAdd, dragStart, delEl, addTextAt, editId, startEdit, commitText, endEdit, forPrint }: {
@@ -585,18 +597,19 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
   editId?: string | null; startEdit?: (id: string) => void; commitText?: (id: string, t: string) => void; endEdit?: () => void; forPrint?: boolean;
 }) {
   const L = layout(project);
-  const opts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: editing && !forPrint, small: L.small, aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo' };
   return (
     <div style={{ width: L.PW, height: L.PH, background: '#fff', transform: forPrint ? undefined : `scale(${scale})`, transformOrigin: 'top left', boxShadow: forPrint ? 'none' : '0 10px 40px rgba(0,0,0,0.18)', position: 'relative', flexShrink: 0 }}
       onClick={() => { if (editing) { setSelLabel(null); setSelEl(null); } }}>
       <div style={{ position: 'absolute', top: L.m, left: L.m, width: L.usableW, display: 'flex', flexWrap: 'wrap', gap: L.gap, alignContent: 'flex-start', justifyContent: 'center' }}>
-        {project.labels.map(label => (
-          <LabelView key={label.id} label={label} W={L.lw} H={L.lh} editing={editing && !forPrint} opts={opts}
+        {project.labels.map(label => {
+          const sz = sizeOf(label, project);
+          return (
+          <LabelView key={label.id} label={label} W={sz.w * MM} H={sz.h * MM} editing={editing && !forPrint} opts={optsFor(label, project, editing && !forPrint)}
             selectedLabel={selLabel === label.id} selectedEl={selLabel === label.id ? selEl : null}
             onSelectLabel={() => setSelLabel(label.id)} onSelectEl={(id) => { setSelLabel(label.id); setSelEl(id); }}
             onDragStart={dragStart} onDelEl={delEl} onAddText={(x, y) => addTextAt(label.id, x, y)}
             editId={editId} onStartEdit={startEdit} onCommitText={commitText} onEndEdit={endEdit} />
-        ))}
+        ); })}
         {!forPrint && <button onClick={(e) => { e.stopPropagation(); onAdd(); }} style={{ width: L.lw, height: Math.min(L.lh, 220), border: '2px dashed #cbd5e1', borderRadius: 8, background: '#f8fafc', color: '#94a3b8', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: SYS, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}><span style={{ fontSize: 22 }}>＋</span>Ajouter</button>}
       </div>
     </div>
@@ -609,37 +622,43 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
 
 // Calcule la disposition d'impression : pages A4 (ou A5/A3), étiquettes à
 // taille réelle, tuilées selon la place, avec pagination explicite.
+interface PrintPage { wMm: number; hMm: number; gapMm: number; labels: Label[]; tiling: boolean }
 function printPlan(project: Project) {
   const paper = PAPERS[project.printPaper || 'A4'] || PAPERS.A4;
   const margin = project.printMarginMm ?? 0;
-  const gapMm = project.labels.length > 1 ? GAP_MM : 0;
-  const { cols, rows, perPage } = paginate(project.labelWmm, project.labelHmm, paper.w, paper.h, margin, gapMm);
   const labels = project.labels.length ? project.labels : [newLabel()];
-  const pages = chunk(labels, perPage);
-  const tiling = labels.length > 1 || project.labelWmm < paper.w - 2 || project.labelHmm < paper.h - 2;
-  return { paper, margin, gapMm, cols, rows, perPage, pages, tiling };
+  // Regroupe les étiquettes par taille → chaque format est tuilé correctement.
+  const groups = new Map<string, { w: number; h: number; labels: Label[] }>();
+  for (const l of labels) { const { w, h } = sizeOf(l, project); const k = `${w}x${h}`; if (!groups.has(k)) groups.set(k, { w, h, labels: [] }); groups.get(k)!.labels.push(l); }
+  const pages: PrintPage[] = [];
+  for (const g of groups.values()) {
+    const gapMm = g.labels.length > 1 ? GAP_MM : 0;
+    const { perPage } = paginate(g.w, g.h, paper.w, paper.h, margin, gapMm);
+    const tiling = g.labels.length > 1 || g.w < paper.w - 2 || g.h < paper.h - 2;
+    for (const part of chunk(g.labels, perPage)) pages.push({ wMm: g.w, hMm: g.h, gapMm, labels: part, tiling });
+  }
+  const f0 = sizeOf(labels[0], project);
+  const { cols, rows, perPage } = paginate(f0.w, f0.h, paper.w, paper.h, margin, labels.length > 1 ? GAP_MM : 0);
+  return { paper, margin, pages, cols, rows, perPage, formats: groups.size };
 }
 
 function PrintSheet({ project, screen }: { project: Project; screen?: boolean }) {
-  const lw = project.labelWmm * MM, lh = project.labelHmm * MM;
   const plan = printPlan(project);
-  const opts: SeedOpts = {
-    landscape: lw > lh * 1.5, logo: project.logo, disclaimer: project.disclaimer,
-    editing: false, small: Math.min(project.labelWmm, project.labelHmm) < 80,
-    aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo',
-  };
-  const g = plan.gapMm * MM, m = plan.margin * MM;
+  const m = plan.margin * MM;
   return (
     <>
-      {plan.pages.map((page, pi) => (
-        <div key={pi} style={{ width: plan.paper.w * MM, height: plan.paper.h * MM, boxSizing: 'border-box', padding: m, background: '#fff', breakAfter: pi < plan.pages.length - 1 ? 'page' : 'auto', pageBreakAfter: pi < plan.pages.length - 1 ? 'always' : 'auto', display: 'flex', flexWrap: 'wrap', alignContent: 'flex-start', gap: g, margin: screen ? '0 auto 14px' : 0, boxShadow: screen ? '0 6px 24px rgba(0,0,0,0.25)' : 'none', overflow: 'hidden' }}>
-          {page.map(l => (
-            <div key={l.id} style={{ width: lw, height: lh, flexShrink: 0, outline: plan.tiling ? '0.4px dashed rgba(0,0,0,0.35)' : 'none' }}>
-              <LabelView label={l} W={lw} H={lh} editing={false} opts={opts} selectedLabel={false} selectedEl={null} onSelectLabel={() => {}} onSelectEl={() => {}} onDragStart={() => {}} onDelEl={() => {}} />
-            </div>
-          ))}
-        </div>
-      ))}
+      {plan.pages.map((page, pi) => {
+        const lw = page.wMm * MM, lh = page.hMm * MM, g = page.gapMm * MM;
+        return (
+          <div key={pi} style={{ width: plan.paper.w * MM, height: plan.paper.h * MM, boxSizing: 'border-box', padding: m, background: '#fff', breakAfter: pi < plan.pages.length - 1 ? 'page' : 'auto', pageBreakAfter: pi < plan.pages.length - 1 ? 'always' : 'auto', display: 'flex', flexWrap: 'wrap', alignContent: 'flex-start', gap: g, margin: screen ? '0 auto 14px' : 0, boxShadow: screen ? '0 6px 24px rgba(0,0,0,0.25)' : 'none', overflow: 'hidden' }}>
+            {page.labels.map(l => (
+              <div key={l.id} style={{ width: lw, height: lh, flexShrink: 0, outline: page.tiling ? '0.4px dashed rgba(0,0,0,0.35)' : 'none' }}>
+                <LabelView label={l} W={lw} H={lh} editing={false} opts={optsFor(l, project, false)} selectedLabel={false} selectedEl={null} onSelectLabel={() => {}} onSelectEl={() => {}} onDragStart={() => {}} onDelEl={() => {}} />
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -905,7 +924,7 @@ function autoMap(fields: ImpField[], header: string[], hasHeader: boolean, body:
   return map;
 }
 
-function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (labels: Label[], fmt?: { w: number; h: number; page: string }) => void }) {
+function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (labels: Label[]) => void }) {
   const [type, setType] = useState<PromoType>('prix-promo');
   const [rows, setRows] = useState<string[][]>([]);
   const [hasHeader, setHasHeader] = useState(true);
@@ -957,8 +976,12 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
   const domFmt = FORMATS.find(f => f.id === (Object.entries(fmtCounts).sort((a, b) => b[1] - a[1])[0]?.[0])) || null;
   const build = () => {
     if (!validCount) { setError('Aucune ligne avec un prix valide (vérifiez le mappage des colonnes).'); return; }
-    const labels = prepared.map(({ d }) => { if (!d.category) d.category = 'PROMOTION'; return newLabel(type, d); });
-    onImport(labels, domFmt ? { w: domFmt.w, h: domFmt.h, page: domFmt.page } : undefined);
+    const labels = prepared.map(({ d, r }) => {
+      if (!d.category) d.category = 'PROMOTION';
+      const f = formatCol >= 0 ? matchFormat(r[formatCol] || '') : null;
+      return newLabel(type, d, f ? { w: f.w, h: f.h } : undefined);
+    });
+    onImport(labels);
   };
 
   const example = 'Catégorie;Produit;Prix normal;Prix promo;Descriptif\nCOMPLÉMENT ALIMENTAIRE;Chondro-haid Fort ARKOPHARMA;31,90;26,90;Lot de 3 x 60 gélules*';
@@ -1012,7 +1035,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
               </select>
             </div>
           </div>
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>📐 Formats reconnus dans la colonne « Format » : <strong style={{ color: '#cbd5e1' }}>{FORMATS_LEGEND}</strong>.{domFmt && <span style={{ color: '#86efac' }}> → planche réglée sur <strong>{domFmt.name}</strong> ({domFmt.w}×{domFmt.h} mm).</span>}</div>
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>📐 La colonne « Format » règle la taille <strong style={{ color: '#cbd5e1' }}>de chaque étiquette</strong> individuellement. Formats reconnus : <strong style={{ color: '#cbd5e1' }}>{FORMATS_LEGEND}</strong>.{domFmt && <span style={{ color: '#86efac' }}> (principal détecté : {domFmt.name})</span>}</div>
 
           <SectionTitle>Aperçu</SectionTitle>
           <div style={{ overflow: 'auto', border: '1px solid #1e293b', borderRadius: 6, marginBottom: 14 }}>
@@ -1183,6 +1206,8 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const changeType = (t: PromoType) => { if (current) { updateLabel(current.id, l => ({ ...l, type: t, overrides: {} })); setSelEl(null); } };
   const setAccent = (c: string) => { if (current) updateLabel(current.id, l => ({ ...l, accent: c })); };
   const setBg = (c: string) => { if (current) updateLabel(current.id, l => ({ ...l, bg: c })); };
+  // Format propre à l'étiquette sélectionnée (null = comme la planche). Reset des positions.
+  const setLabelSize = (w: number | null, h: number | null) => { if (!current) return; updateLabel(current.id, l => { const nl: Label = { ...l, overrides: {} }; if (w && h) { nl.wMm = w; nl.hMm = h; } else { delete nl.wMm; delete nl.hMm; } return nl; }); setSelEl(null); };
   const addLabel = () => { const t = current?.type || 'prix-promo'; const nl = newLabel(t); setProject(p => ({ ...p, labels: [...p.labels, nl] })); setSelLabel(nl.id); setSelEl(null); };
   const duplicateLabel = () => { if (!current) return; const copy: Label = { ...current, id: uid(), overrides: { ...current.overrides }, extra: current.extra.map(e => ({ ...e })) }; setProject(p => ({ ...p, labels: [...p.labels, copy] })); setSelLabel(copy.id); };
   const deleteLabel = () => { if (!current) return; setProject(p => ({ ...p, labels: p.labels.filter(l => l.id !== current.id) })); setSelLabel(null); setSelEl(null); };
@@ -1305,6 +1330,12 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                 <Field label="Type de promotion">
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>{TYPES.map(t => { const on = current.type === t.id; return <button key={t.id} onClick={() => changeType(t.id)} style={{ padding: '7px 6px', background: on ? `${t.color}22` : '#1e293b', border: `1px solid ${on ? t.color : '#334155'}`, borderRadius: 6, cursor: 'pointer', fontSize: 10.5, fontWeight: 700, color: on ? '#f8fafc' : '#94a3b8', display: 'flex', alignItems: 'center', gap: 5 }}><span>{t.icon}</span>{t.label}</button>; })}</div>
                 </Field>
+                <Field label="Format de cette étiquette">
+                  <select value={current.wMm ? `${current.wMm}x${current.hMm}` : ''} onChange={e => { const v = e.target.value; if (!v) setLabelSize(null, null); else { const [w, h] = v.split('x').map(Number); setLabelSize(w, h); } }} style={{ ...inp, cursor: 'pointer' }}>
+                    <option value="">Comme la planche ({project.labelWmm}×{project.labelHmm} mm)</option>
+                    {FORMATS.map(f => <option key={f.id} value={`${f.w}x${f.h}`}>{f.name} — {f.w}×{f.h} mm</option>)}
+                  </select>
+                </Field>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}><SectionTitle>Contenu</SectionTitle><ContentForm l={current} set={setData} /></div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}><SectionTitle>Couleurs</SectionTitle><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><ColorRow label="Cercle / accent" value={current.accent} onChange={setAccent} /><ColorRow label="Fond" value={current.bg} onChange={setBg} /></div></div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
@@ -1360,7 +1391,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
         </button>
       )}
 
-      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={(labels, fmt) => { setProject(p => { const sized = fmt ? { ...p, labelWmm: fmt.w, labelHmm: fmt.h, pageFormat: fmt.page, labels: p.labels.map(l => ({ ...l, overrides: {} })) } : p; return { ...sized, labels: [...sized.labels, ...labels] }; }); setShowImport(false); }} />}
+      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={(labels) => { setProject(p => ({ ...p, labels: [...p.labels, ...labels] })); setShowImport(false); }} />}
       {showPreview && <PrintPreviewModal project={project} setProject={setProject} onClose={() => setShowPreview(false)} />}
 
       <style>{`input[type=range] { accent-color: #16a34a; }`}</style>
