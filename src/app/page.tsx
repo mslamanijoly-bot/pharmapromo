@@ -206,50 +206,42 @@ function footEls(l: Label, o: SeedOpts): El[] {
   return out;
 }
 
-// ── Style « Officine » : blanc + vert pharmacie, sobre et premium, économe en encre ──
-// Un seul exemple : Prix Promo en portrait (le format phare A4). Les autres cas
-// retombent sur le style « Promo » classique.
+// ── Style « Officine » : blanc + vert pharmacie, lisible de loin ──
+// Hiérarchie merchandising : 1 héros (le PRIX géant), 1 accroche (le −%),
+// l'ancrage (prix barré), zéro texte superflu. Vert = identité, rouge = la promo.
 function officinePromoPortrait(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 0.7;
-  const { normal, intp, cents, remise, pct } = priceParts(d.normalPrice, d.promoPrice);
+  const { normal, pct } = priceParts(d.normalPrice, d.promoPrice);
   const manual = (d.remiseManual || '').trim();
   const pctVal = d.remiseType === 'pct' ? (manual || pct) : pct;
-  const econ = d.remiseType === 'pct'
-    ? (manual ? `${manual}%` : (pct ? `${pct}%` : ''))
-    : (manual ? `${manual}€` : (remise ? `${remise}€` : ''));
   const hasOld = normal > pf(d.promoPrice);
   const dt = dateText(d);
   const out: El[] = [
     { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: OFFI.bg, size: 0, color: OFFI.bg, weight: 400, align: 'left' },
     // Bandeau vert (signal officine) + croix de pharmacie
-    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 8, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
-    { ...B, id: 'cross', kind: 'text', text: '✚', x: 4, y: 1.7, size: 0.038, color: OFFI.white, weight: 900, align: 'left' },
-    { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 2.2, w: 100, size: fitSize(d.category, 0.9, asp, 0.028, 1, 0.015), color: OFFI.white, weight: 800, align: 'center', track: 0.16 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 12, w: 88, size: fitSize(d.product, 0.86, asp, 0.07, 2, 0.04), color: OFFI.greenDark, weight: 900, align: 'center' },
-    { ...B, id: 'rule', kind: 'box', x: 42, y: 25, w: 16, h: 0.5, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
+    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 9, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
+    { ...B, id: 'cross', kind: 'text', text: '✚', x: 4, y: 2.3, size: 0.042, color: OFFI.white, weight: 900, align: 'left' },
+    { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 3, w: 100, size: fitSize(d.category, 0.9, asp, 0.03, 1, 0.016), color: OFFI.white, weight: 800, align: 'center', track: 0.16 },
+    // Produit : gros, vert foncé, lisible
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 13, w: 90, size: fitSize(d.product, 0.9, asp, 0.08, 2, 0.045), color: OFFI.greenDark, weight: 900, align: 'center' },
   ];
-  if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 28.5, w: 100, size: 0.032, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.05 });
-  // Prix = accent promo (rouge) : le point focal de l'affiche
-  out.push(
-    { ...B, id: 'priceInt', kind: 'text', text: intp, x: 8, y: 33, size: 0.235, color: OFFI.promo, weight: 900, align: 'left' },
-    { ...B, id: 'euro', kind: 'text', text: '€', x: 46, y: 36, size: 0.08, color: OFFI.promo, weight: 900, align: 'left' },
-    { ...B, id: 'cents', kind: 'text', text: cents, x: 46, y: 47, size: 0.09, color: OFFI.promo, weight: 900, align: 'left' },
+  // Prix barré (ancrage) — explicite : « AU LIEU DE »
+  if (hasOld) out.push(
+    { ...B, id: 'oldLabel', kind: 'text', text: 'AU LIEU DE', x: 0, y: 30.5, w: 100, size: 0.02, color: OFFI.muted, weight: 700, align: 'center', track: 0.14 },
+    { ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 33, w: 100, size: 0.045, color: OFFI.old, weight: 800, align: 'center', strike: true, strikeW: 0.045 },
   );
-  // Pastille −% : disque rouge (accent promo) à droite
+  // PRIX HÉROS — géant, rouge, centré
+  out.push({ ...B, id: 'price', kind: 'text', text: `${d.promoPrice} €`, x: 2, y: 40, w: 96, size: fitSize(`${d.promoPrice} €`, 0.96, asp, 0.235, 1, 0.13), color: OFFI.promo, weight: 900, align: 'center' });
+  // Accroche −% — gros disque rouge centré
   if (pctVal) out.push(
-    { ...B, id: 'burst', kind: 'box', shape: 'circle', x: 62, y: 31, w: 33, bg: OFFI.promo, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true },
-    { ...B, id: 'burstTxt', kind: 'text', text: `-${pctVal}%`, x: 62, y: 40, w: 33, size: 0.08, color: OFFI.white, weight: 900, align: 'center' },
+    { ...B, id: 'burst', kind: 'box', shape: 'circle', x: 33, y: 64, w: 34, bg: OFFI.promo, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true },
+    { ...B, id: 'burstTxt', kind: 'text', text: `-${pctVal}%`, x: 33, y: 72, w: 34, size: 0.105, color: OFFI.white, weight: 900, align: 'center' },
   );
-  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 60, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: OFFI.muted, weight: 600, align: 'center', italic: true });
-  // Barre d'économie : pastille vert clair (économe en encre), montant en rouge promo
-  if (econ) out.push(
-    { ...B, id: 'saveBox', kind: 'box', x: 16, y: 68, w: 68, h: 8, bg: OFFI.greenSoft, radius: 999, size: 0, color: OFFI.greenSoft, weight: 400, align: 'left' },
-    { ...B, id: 'saveTxt', kind: 'text', text: `VOUS ÉCONOMISEZ ${econ}`, x: 16, y: 70.2, w: 68, size: 0.028, color: OFFI.promo, weight: 900, align: 'center', track: 0.03 },
-  );
-  out.push({ ...B, id: 'bottomRule', kind: 'box', x: 14, y: 84, w: 72, h: 0.35, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' });
-  out.push({ ...B, id: 'urgency', kind: 'text', text: dt || 'Offre dans la limite des stocks disponibles', x: 6, y: 86, w: 88, size: 0.022, color: OFFI.green, weight: 700, align: 'center', track: 0.03 });
-  if (!o.small && o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 8, y: 95, w: 84, size: 0.014, color: OFFI.muted, weight: 400, align: 'center' });
-  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 84, y: 89, w: 12, size: 0, color: '#000', weight: 400, align: 'left' });
+  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 57.5, w: 88, size: fitSize(d.qtyLabel, 0.9, asp, 0.026, 1, 0.018), color: OFFI.muted, weight: 600, align: 'center', italic: true });
+  // Validité / mentions : discrètes, en bas
+  out.push({ ...B, id: 'urgency', kind: 'text', text: dt || 'Offre dans la limite des stocks disponibles', x: 6, y: 90, w: 88, size: 0.02, color: OFFI.green, weight: 700, align: 'center', track: 0.02 });
+  if (!o.small && o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 8, y: 95.5, w: 84, size: 0.013, color: OFFI.muted, weight: 400, align: 'center' });
+  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 85, y: 90, w: 11, size: 0, color: '#000', weight: 400, align: 'left' });
   return out;
 }
 
