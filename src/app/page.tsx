@@ -323,6 +323,25 @@ function officineSeed(l: Label, o: SeedOpts): El[] {
   return officinePrixPromo(l, o);
 }
 
+// ── Officine COMPACT (petits formats : rayon, petite) : épuré, l'essentiel en gros ──
+function officineCompact(l: Label, o: SeedOpts): El[] {
+  const d = l.data, asp = o.aspect || 0.8;
+  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
+  const manual = (d.remiseManual || '').trim();
+  const disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
+  const hasOld = normal > pf(d.promoPrice);
+  const out: El[] = [...offiHeader(d, asp),
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 13, w: 92, size: fitSize(d.product, 0.92, asp, 0.072, 2, 0.044), color: OFFI.greenDark, weight: 900, align: 'center' },
+  ];
+  if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 37, w: 100, size: 0.05, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.05 });
+  out.push({ ...B, id: 'price', kind: 'text', text: `${d.promoPrice} €`, x: 2, y: 45, w: 96, size: fitSize(`${d.promoPrice} €`, 0.96, asp, 0.2, 1, 0.12), color: OFFI.promo, weight: 900, align: 'center' });
+  if (disc) out.push(
+    { ...B, id: 'saveBox', kind: 'box', x: 26, y: 74, w: 48, h: 15, bg: OFFI.promo, radius: 999, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true },
+    { ...B, id: 'saveTxt', kind: 'text', text: disc, x: 26, y: 77.2, w: 48, size: fitSize(disc, 0.42, asp, 0.09, 1, 0.05), color: OFFI.white, weight: 900, align: 'center' },
+  );
+  return out;
+}
+
 // ── Officine RÉGLETTE (paysage) : bande verte identité à gauche, prix à droite ──
 function officineReglette(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 2.5;
@@ -353,7 +372,12 @@ function officineReglette(l: Label, o: SeedOpts): El[] {
 }
 
 function seedEls(l: Label, o: SeedOpts): El[] {
-  if (o.theme === 'officine') return o.landscape ? officineReglette(l, o) : officineSeed(l, o);
+  if (o.theme === 'officine') {
+    // Gabarit choisi selon la forme : paysage → réglette, petit → compact, sinon portrait.
+    if (o.landscape) return officineReglette(l, o);
+    if (o.small && l.type === 'prix-promo') return officineCompact(l, o);
+    return officineSeed(l, o);
+  }
   const a = l.accent, d = l.data;
   const asp = o.aspect || 0.7;
   // Aplat mat, centré : pas de point lumineux blanc, léger fondu vers le bord.
