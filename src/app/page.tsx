@@ -122,13 +122,16 @@ const PAGE_FORMATS = [
   { id: 'roll', name: 'Rouleau', w: 0, h: 0 },
 ];
 
-const LABEL_PRESETS = [
-  { name: 'A4 portrait — 210×297', w: 210, h: 297 },
-  { name: 'Réglette — 200×80', w: 200, h: 80 },
-  { name: 'Vitrine — 105×150', w: 105, h: 150 },
-  { name: 'Rayon — 63×72', w: 63, h: 72 },
-  { name: 'Petite — 48×45', w: 48, h: 45 },
+// Formats d'étiquette disponibles (taille au niveau de la planche).
+const FORMATS = [
+  { id: 'a4', name: 'A4', w: 210, h: 297, page: 'A4', kw: /a4|210|297|affiche/i },
+  { id: 'reglette', name: 'Réglette', w: 200, h: 80, page: 'fit', kw: /r[eé]glette|reglette|200.?80|bandeau|lin[eé]aire/i },
+  { id: 'vitrine', name: 'Vitrine', w: 105, h: 150, page: 'fit', kw: /vitrine|105.?150|a6/i },
+  { id: 'rayon', name: 'Rayon', w: 63, h: 72, page: 'fit', kw: /rayon|63.?72|[eé]tag[eè]re|lin[eé]aire/i },
+  { id: 'petite', name: 'Petite', w: 48, h: 45, page: 'fit', kw: /petite|48.?45|mini/i },
 ];
+const matchFormat = (s: string) => { const t = (s || '').trim(); return t ? FORMATS.find(f => f.kw.test(t)) || null : null; };
+const LABEL_PRESETS = FORMATS.map(f => ({ name: `${f.name} — ${f.w}×${f.h}`, w: f.w, h: f.h }));
 
 const MARGIN_MM = 0, HEADER_MM = 0, GAP_MM = 3;
 
@@ -762,7 +765,8 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
 type ImpField = { key: keyof LabelData; label: string; kw: RegExp };
 const F_CAT: ImpField = { key: 'category', label: 'Catégorie', kw: /cat|rayon|univers|famille|gamme/i };
 const F_PROD: ImpField = { key: 'product', label: 'Produit', kw: /produit|nom|libell|d[eé]sign|article|d[eé]nom/i };
-const F_QTY: ImpField = { key: 'qtyLabel', label: 'Descriptif', kw: /descript|quantit|format|conditionn|contenance|lot|g[eé]lul|capsul|comprim/i };
+const F_QTY: ImpField = { key: 'qtyLabel', label: 'Descriptif', kw: /descript|quantit|conditionn|contenance|g[eé]lul|capsul|comprim/i };
+const FORMAT_KW = /format|taille|gabarit|dimension|mod[eè]le|support/i;
 const IMPORT_FIELDS: Record<PromoType, ImpField[]> = {
   'prix-promo': [F_CAT, F_PROD,
     { key: 'normalPrice', label: 'Prix normal €', kw: /normal|barr|public|ancien|avant|initial|vente|courant|fort/i },
@@ -783,34 +787,36 @@ const IMPORT_FIELDS: Record<PromoType, ImpField[]> = {
 // Modèles « parfaits » par type : en-têtes reconnus automatiquement + exemples.
 const TEMPLATES: Record<PromoType, { headers: string[]; rows: string[][] }> = {
   'prix-promo': {
-    headers: ['Catégorie', 'Produit', 'Prix normal €', 'Prix promo €', 'Descriptif'],
+    headers: ['Catégorie', 'Produit', 'Prix normal €', 'Prix promo €', 'Descriptif', 'Format'],
     rows: [
-      ['COMPLÉMENT ALIMENTAIRE', 'Chondro-Aid Fort ARKOPHARMA', '31,90', '26,90', 'Lot de 3 x 60 gélules'],
-      ['SOIN VISAGE', 'Crème hydratante AVÈNE', '19,90', '14,90', 'Tube 40 ml'],
-      ['HYGIÈNE BUCCO-DENTAIRE', 'Bain de bouche ELUDRIL', '8,50', '5,90', 'Flacon 500 ml'],
+      ['COMPLÉMENT ALIMENTAIRE', 'Chondro-Aid Fort ARKOPHARMA', '31,90', '26,90', 'Lot de 3 x 60 gélules', 'A4'],
+      ['SOIN VISAGE', 'Crème hydratante AVÈNE', '19,90', '14,90', 'Tube 40 ml', 'Vitrine'],
+      ['HYGIÈNE BUCCO-DENTAIRE', 'Bain de bouche ELUDRIL', '8,50', '5,90', 'Flacon 500 ml', 'Rayon'],
     ],
   },
   'bon-reduction': {
-    headers: ['Catégorie', 'Produit', 'Valeur bon €', 'Validité'],
+    headers: ['Catégorie', 'Produit', 'Valeur bon €', 'Validité', 'Format'],
     rows: [
-      ['HYGIÈNE', 'Dentifrice SENSODYNE', '2,00', '31/12/2026'],
-      ['BÉBÉ', 'Lingettes MUSTELA', '1,50', '30/09/2026'],
+      ['HYGIÈNE', 'Dentifrice SENSODYNE', '2,00', '31/12/2026', 'Vitrine'],
+      ['BÉBÉ', 'Lingettes MUSTELA', '1,50', '30/09/2026', 'Rayon'],
     ],
   },
   'remise-lot': {
-    headers: ['Catégorie', 'Produit', 'Qté totale', 'Offert(s)', 'Prix du lot €', 'Descriptif'],
+    headers: ['Catégorie', 'Produit', 'Qté totale', 'Offert(s)', 'Prix du lot €', 'Descriptif', 'Format'],
     rows: [
-      ['COMPLÉMENT ALIMENTAIRE', 'Magnésium B6', '3', '1', '19,98', 'Lot de 3 boîtes'],
-      ['SOLAIRE', 'Spray solaire SPF50+', '2', '1', '24,90', 'Lot de 2 sprays'],
+      ['COMPLÉMENT ALIMENTAIRE', 'Magnésium B6', '3', '1', '19,98', 'Lot de 3 boîtes', 'A4'],
+      ['SOLAIRE', 'Spray solaire SPF50+', '2', '1', '24,90', 'Lot de 2 sprays', 'Réglette'],
     ],
   },
   'multi-achat': {
-    headers: ['Catégorie', 'Produit', 'Qté 1', 'Prix 1', 'Qté 2', 'Prix 2', 'Qté 3', 'Prix 3'],
+    headers: ['Catégorie', 'Produit', 'Qté 1', 'Prix 1', 'Qté 2', 'Prix 2', 'Qté 3', 'Prix 3', 'Format'],
     rows: [
-      ['SOLAIRE', 'Spray solaire SPF50', '1', '12,90', '2', '22,90', '3', '29,90'],
+      ['SOLAIRE', 'Spray solaire SPF50', '1', '12,90', '2', '22,90', '3', '29,90', 'Petite'],
     ],
   },
 };
+// Légende des formats acceptés dans la colonne « Format » de l'Excel.
+const FORMATS_LEGEND = FORMATS.map(f => `${f.name} (${f.w}×${f.h} mm)`).join(' · ');
 
 function triggerDownload(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
@@ -899,11 +905,12 @@ function autoMap(fields: ImpField[], header: string[], hasHeader: boolean, body:
   return map;
 }
 
-function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (labels: Label[]) => void }) {
+function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (labels: Label[], fmt?: { w: number; h: number; page: string }) => void }) {
   const [type, setType] = useState<PromoType>('prix-promo');
   const [rows, setRows] = useState<string[][]>([]);
   const [hasHeader, setHasHeader] = useState(true);
   const [mapping, setMapping] = useState<Record<string, number>>({});
+  const [formatCol, setFormatCol] = useState(-1);
   const [fileName, setFileName] = useState('');
   const [error, setError] = useState('');
   const fields = IMPORT_FIELDS[type];
@@ -911,7 +918,10 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
 
   // (re)calcule le mappage auto à chaque changement de données / type / en-tête
   useEffect(() => {
-    if (rows.length) setMapping(autoMap(IMPORT_FIELDS[type], rows[0] || [], hasHeader, hasHeader ? rows.slice(1) : rows));
+    if (!rows.length) return;
+    setMapping(autoMap(IMPORT_FIELDS[type], rows[0] || [], hasHeader, hasHeader ? rows.slice(1) : rows));
+    // détecte la colonne « Format » par son en-tête
+    setFormatCol(hasHeader ? (rows[0] || []).findIndex(h => FORMAT_KW.test(h)) : -1);
   }, [rows, type, hasHeader]);
 
   // Empile les tableaux côte à côte en une seule liste, puis détecte l'en-tête.
@@ -938,12 +948,17 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
     const d: Partial<LabelData> = {};
     fields.forEach(f => { const c = mapping[f.key]; if (c >= 0 && r[c] != null && r[c] !== '') (d as Record<string, string>)[f.key] = r[c]; });
     if (!d.product) d.product = (mapping.product >= 0 ? r[mapping.product] : r[0]) || '';
-    return d;
-  }).filter(d => (d.product || '').trim() && PRICE_KEYS[type].some(k => pf((d as Record<string, string>)[k] || '') > 0));
+    return { d, r };
+  }).filter(({ d }) => (d.product || '').trim() && PRICE_KEYS[type].some(k => pf((d as Record<string, string>)[k] || '') > 0));
   const validCount = prepared.length;
+  // Format dominant lu dans la colonne « Format » (taille de la planche).
+  const fmtCounts: Record<string, number> = {};
+  if (formatCol >= 0) for (const { r } of prepared) { const f = matchFormat(r[formatCol] || ''); if (f) fmtCounts[f.id] = (fmtCounts[f.id] || 0) + 1; }
+  const domFmt = FORMATS.find(f => f.id === (Object.entries(fmtCounts).sort((a, b) => b[1] - a[1])[0]?.[0])) || null;
   const build = () => {
     if (!validCount) { setError('Aucune ligne avec un prix valide (vérifiez le mappage des colonnes).'); return; }
-    onImport(prepared.map(d => { if (!d.category) d.category = 'PROMOTION'; return newLabel(type, d); }));
+    const labels = prepared.map(({ d }) => { if (!d.category) d.category = 'PROMOTION'; return newLabel(type, d); });
+    onImport(labels, domFmt ? { w: domFmt.w, h: domFmt.h, page: domFmt.page } : undefined);
   };
 
   const example = 'Catégorie;Produit;Prix normal;Prix promo;Descriptif\nCOMPLÉMENT ALIMENTAIRE;Chondro-haid Fort ARKOPHARMA;31,90;26,90;Lot de 3 x 60 gélules*';
@@ -979,7 +994,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
           </label>
 
           <SectionTitle>Correspondance des colonnes</SectionTitle>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
             {fields.map(f => (
               <div key={f.key}>
                 <label style={lbl}>{f.label}</label>
@@ -989,7 +1004,15 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
                 </select>
               </div>
             ))}
+            <div>
+              <label style={lbl}>Format (taille d&apos;étiquette)</label>
+              <select value={formatCol} onChange={e => setFormatCol(parseInt(e.target.value))} style={{ ...inp, cursor: 'pointer' }}>
+                <option value={-1}>(aucune — garder le format actuel)</option>
+                {Array.from({ length: ncols }).map((_, i) => <option key={i} value={i}>{colLabel(i)}</option>)}
+              </select>
+            </div>
           </div>
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>📐 Formats reconnus dans la colonne « Format » : <strong style={{ color: '#cbd5e1' }}>{FORMATS_LEGEND}</strong>.{domFmt && <span style={{ color: '#86efac' }}> → planche réglée sur <strong>{domFmt.name}</strong> ({domFmt.w}×{domFmt.h} mm).</span>}</div>
 
           <SectionTitle>Aperçu</SectionTitle>
           <div style={{ overflow: 'auto', border: '1px solid #1e293b', borderRadius: 6, marginBottom: 14 }}>
@@ -1337,7 +1360,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
         </button>
       )}
 
-      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={(labels) => { setProject(p => ({ ...p, labels: [...p.labels, ...labels] })); setShowImport(false); }} />}
+      {showImport && <ImportModal onClose={() => setShowImport(false)} onImport={(labels, fmt) => { setProject(p => { const sized = fmt ? { ...p, labelWmm: fmt.w, labelHmm: fmt.h, pageFormat: fmt.page, labels: p.labels.map(l => ({ ...l, overrides: {} })) } : p; return { ...sized, labels: [...sized.labels, ...labels] }; }); setShowImport(false); }} />}
       {showPreview && <PrintPreviewModal project={project} setProject={setProject} onClose={() => setShowPreview(false)} />}
 
       <style>{`input[type=range] { accent-color: #16a34a; }`}</style>
