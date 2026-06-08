@@ -13,7 +13,7 @@ import { MM, pf, ff, fitSize, priceParts, parseTable, paginate, chunk, stackColu
 //  MODÈLE
 // ──────────────────────────────────────────────────────────────────────
 
-type PromoType = 'prix-promo' | 'bon-reduction' | 'remise-lot' | 'multi-achat';
+export type PromoType = 'prix-promo' | 'bon-reduction' | 'remise-lot' | 'multi-achat';
 type Align = 'left' | 'center' | 'right';
 type ElKind = 'text' | 'pill' | 'box' | 'image';
 
@@ -37,9 +37,9 @@ interface LabelData {
   dateStart: string; dateEnd: string;
 }
 
-interface Label { id: string; type: PromoType; accent: string; bg: string; data: LabelData; overrides: Record<string, Partial<El>>; extra: El[]; wMm?: number; hMm?: number; }
+export interface Label { id: string; type: PromoType; accent: string; bg: string; data: LabelData; overrides: Record<string, Partial<El>>; extra: El[]; wMm?: number; hMm?: number; }
 
-interface Project {
+export interface Project {
   pharmacy: string; plan: string; logo: string | null; disclaimer: string;
   pageFormat: string; labelWmm: number; labelHmm: number;
   printPaper?: string; printMarginMm?: number; theme?: string;
@@ -124,7 +124,7 @@ const PAGE_FORMATS = [
 ];
 
 // Formats d'étiquette disponibles (taille au niveau de la planche).
-const FORMATS = [
+export const FORMATS = [
   { id: 'a4', name: 'A4', w: 210, h: 297, page: 'A4', kw: /a4|210|297|affiche/i },
   { id: 'reglette', name: 'Réglette', w: 200, h: 80, page: 'fit', kw: /r[eé]glette|reglette|200.?80|bandeau|lin[eé]aire/i },
   { id: 'vitrine', name: 'Vitrine', w: 105, h: 150, page: 'fit', kw: /vitrine|105.?150|a6/i },
@@ -150,7 +150,7 @@ const newData = (): LabelData => ({
   dateStart: '', dateEnd: '',
 });
 
-function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelData>, size?: { w: number; h: number }): Label {
+export function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelData>, size?: { w: number; h: number }): Label {
   return { id: uid(), type, accent: DA.red, bg: DA.bg, data: { ...newData(), ...data }, overrides: {}, extra: [], ...(size ? { wMm: size.w, hMm: size.h } : {}) };
 }
 
@@ -662,7 +662,7 @@ function EditableText({ initial, onCommit, onCancel }: { initial: string; onComm
 interface DragState { labelId: string; elId: string; offX: number; offY: number; box: HTMLElement; elW: number; elH: number; }
 type Snap = { x: boolean; y: boolean };
 
-function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, snap, onSelectLabel, onSelectEl, onDragStart, onDelEl, onAddText, editId, onStartEdit, onCommitText, onEndEdit, onDeleteLabel }: {
+export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, snap, onSelectLabel, onSelectEl, onDragStart, onDelEl, onAddText, editId, onStartEdit, onCommitText, onEndEdit, onDeleteLabel }: {
   label: Label; W: number; H: number; editing: boolean; opts: SeedOpts;
   selectedLabel: boolean; selectedEl: string | null; snap?: Snap | null;
   onSelectLabel: () => void; onSelectEl: (id: string) => void;
@@ -713,9 +713,9 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, snap
 // ──────────────────────────────────────────────────────────────────────
 
 // Taille (mm) propre à une étiquette : override par étiquette, sinon taille de la planche.
-const sizeOf = (l: Label, p: Project) => ({ w: l.wMm ?? p.labelWmm, h: l.hMm ?? p.labelHmm });
+export const sizeOf = (l: Label, p: Project) => ({ w: l.wMm ?? p.labelWmm, h: l.hMm ?? p.labelHmm });
 // Options de composition (orientation, format…) calculées pour CETTE étiquette.
-const optsFor = (l: Label, p: Project, editing: boolean): SeedOpts => {
+export const optsFor = (l: Label, p: Project, editing: boolean): SeedOpts => {
   const { w, h } = sizeOf(l, p);
   return { landscape: w > h * 1.5, logo: p.logo, disclaimer: p.disclaimer, editing, small: Math.min(w, h) < 80, aspect: w / h, theme: p.theme || 'promo', dateStart: p.dateStart, dateEnd: p.dateEnd };
 };
