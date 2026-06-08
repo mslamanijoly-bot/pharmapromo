@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { pf, ff, fitSize, priceParts, paginate, parseTable, chunk, stackColumnBlocks } from './calc';
+import { pf, ff, fitSize, priceParts, paginate, parseTable, chunk, stackColumnBlocks, splitSize } from './calc';
+
+describe('splitSize', () => {
+  it('détache le litrage d\'une désignation pharmacie', () => {
+    expect(splitSize('Bain de bouche Listerine F/500ML')).toEqual({ product: 'Bain de bouche Listerine', size: '500 ml' });
+    expect(splitSize('Crème mains Neutrogena 75ml')).toEqual({ product: 'Crème mains Neutrogena', size: '75 ml' });
+    expect(splitSize('Forcapil 60 gélules')).toEqual({ product: 'Forcapil', size: '60 gélules' });
+    expect(splitSize('Eau thermale Avène B/300ML')).toEqual({ product: 'Eau thermale Avène', size: '300 ml' });
+  });
+  it('ne casse pas un nom sans litrage', () => {
+    expect(splitSize('Magné B6')).toEqual({ product: 'Magné B6', size: '' });
+    expect(splitSize('Oméga 3')).toEqual({ product: 'Oméga 3', size: '' });
+    expect(splitSize('')).toEqual({ product: '', size: '' });
+  });
+});
 
 describe('stackColumnBlocks', () => {
   it('empile deux tableaux côte à côte séparés par une colonne vide', () => {

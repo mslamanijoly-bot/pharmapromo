@@ -23,6 +23,23 @@ export function fitSize(text: string, wFrac: number, aspect: number, base: numbe
 /** Formate une remise en euros : 5 → "5", 0.5 → "0,50", 2.9 → "2,90". */
 export const fr = (n: number) => (Number.isInteger(n) ? String(n) : ff(n));
 
+/** Détache un litrage / grammage en fin de désignation produit (exports pharmacie).
+ *  "Bain de bouche Listerine F/500ML" → { product: "Bain de bouche Listerine", size: "500 ml" }
+ *  Reconnaît ml/cl/l/g/mg/kg, gélules/comprimés/caps/sachets/unidoses/doses/pièces,
+ *  avec un code de conditionnement optionnel (F/, B/, T/, BT, FL, BO, x). */
+export function splitSize(name: string): { product: string; size: string } {
+  const s = (name || '').trim();
+  if (!s) return { product: s, size: '' };
+  const re = /\s*[-–,/]?\s*(?:(?:fl|bo|bt|fco?|flacon|bte?|tube|t|b|f|x)\s*[/.]?\s*)?(\d+(?:[.,]\d+)?)\s*(ml|cl|l|mg|kg|g[ée]lules?|gel|g|comprim[ée]s?|cps?|caps?|sachets?|unidoses?|doses?|pi[èe]ces?|pces?)\b\.?$/i;
+  const m = s.match(re);
+  if (m == null || m.index == null) return { product: s, size: '' };
+  const num = m[1].replace('.', ',');
+  const u = m[2].toLowerCase();
+  const unit = u === 'l' ? 'L' : (/^g[ée]l/.test(u) ? 'gélules' : (/^comp/.test(u) ? 'comprimés' : (/^cap|^cps?$/.test(u) ? 'caps' : (/^sach/.test(u) ? 'sachets' : u))));
+  const product = s.slice(0, m.index).replace(/[-–,/\s]+$/, '').trim();
+  return product ? { product, size: `${num} ${unit}` } : { product: s, size: '' };
+}
+
 /** Décompose un prix promo en partie entière / centimes + remise immédiate (€ et %). */
 export function priceParts(normalStr: string, promoStr: string) {
   const promo = pf(promoStr), normal = pf(normalStr);

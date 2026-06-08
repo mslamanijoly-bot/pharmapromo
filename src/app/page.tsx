@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, CSSProperties } from 'react';
-import { MM, pf, ff, fitSize, priceParts, parseTable, paginate, chunk, stackColumnBlocks } from '@/lib/calc';
+import { MM, pf, ff, fitSize, priceParts, parseTable, paginate, chunk, stackColumnBlocks, splitSize } from '@/lib/calc';
 
 /* ════════════════════════════════════════════════════════════════════
    PHARMAPROMO STUDIO
@@ -1155,6 +1155,9 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
     const d: Partial<LabelData> = {};
     fields.forEach(f => { const c = mapping[f.key]; if (c >= 0 && r[c] != null && r[c] !== '') (d as Record<string, string>)[f.key] = r[c]; });
     if (!d.product) d.product = (mapping.product >= 0 ? r[mapping.product] : r[0]) || '';
+    // Désignation pharmacie « Nom marque F/500ML » : si pas de descriptif fourni,
+    // on détache le litrage/grammage pour l'afficher sur la petite ligne.
+    if (!d.qtyLabel && d.product) { const sp = splitSize(d.product); if (sp.size) { d.product = sp.product; d.qtyLabel = sp.size; } }
     return { d, r };
   }).filter(({ d }) => (d.product || '').trim() && PRICE_KEYS[type].some(k => pf((d as Record<string, string>)[k] || '') > 0));
   const validCount = prepared.length;
