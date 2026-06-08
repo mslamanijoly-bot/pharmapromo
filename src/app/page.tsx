@@ -247,6 +247,17 @@ function offiBurst(big: string, small: string | null, asp: number, y = 30, w = 4
   return out;
 }
 
+// Pastille « remise » Officine : pilule rouge horizontale, texte blanc maximisé.
+// Une pilule large laisse bien plus de place au chiffre qu'un disque (qui gaspille les coins)
+// → la remise « -5€ / -30% » est nettement plus lisible de loin, à surface égale.
+function offiSave(txt: string, asp: number, x: number, y: number, w: number, h: number): El[] {
+  const fs = fitSize(txt, (w / 100) * 0.8, asp, (h / 100) * 0.66, 1, 0.04);
+  return [
+    { ...B, id: 'saveBox', kind: 'box', x, y, w, h, bg: OFFI.promo, radius: 999, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true },
+    { ...B, id: 'saveTxt', kind: 'text', text: txt, x, y: y + (h - fs * 100) / 2, w, size: fs, color: OFFI.white, weight: 900, align: 'center', track: 0.01 },
+  ];
+}
+
 // Prix « charme » Officine : euros GROS + centimes/€ plus petits (réduit la « douleur du prix »).
 // Astuce merchandising : on aligne la VIRGULE au centre de la zone → le prix reste optiquement
 // centré quel que soit le nombre de chiffres, et les centimes montent en exposant.
@@ -286,8 +297,8 @@ function officinePrixPromo(l: Label, o: SeedOpts): El[] {
   // 4) Nom du produit (+ descriptif éventuel).
   out.push({ ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 42, w: 90, size: fitSize(d.product, 0.92, asp, 0.05, 2, 0.03), color: OFFI.greenDark, weight: 900, align: 'center' });
   if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 53.5, w: 88, size: fitSize(d.qtyLabel, 0.92, asp, 0.022, 1, 0.016), color: OFFI.muted, weight: 600, align: 'center', italic: true });
-  // 5) Remise (ex. −4 €) — accroche, gros disque rouge centré.
-  if (discTxt) out.push(...offiBurst(discTxt, null, asp, 59, 38));
+  // 5) Remise (ex. −4 €) — pastille rouge large, texte blanc XXL (plus lisible qu'un disque).
+  if (discTxt) out.push(...offiSave(discTxt, asp, 23, 61, 54, 17));
   // 6) Mentions légales / validité.
   out.push(...offiFooter(l, o));
   return out;
@@ -358,10 +369,7 @@ function officineCompact(l: Label, o: SeedOpts): El[] {
   out.push(...offiPrice(d.promoPrice, asp, 13, 0.24, 0.14));
   if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 40, w: 100, size: 0.05, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.05 });
   out.push({ ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 50, w: 92, size: fitSize(d.product, 0.92, asp, 0.072, 2, 0.044), color: OFFI.greenDark, weight: 900, align: 'center' });
-  if (disc) out.push(
-    { ...B, id: 'saveBox', kind: 'box', x: 26, y: 74, w: 48, h: 15, bg: OFFI.promo, radius: 999, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true },
-    { ...B, id: 'saveTxt', kind: 'text', text: disc, x: 26, y: 77.2, w: 48, size: fitSize(disc, 0.42, asp, 0.09, 1, 0.05), color: OFFI.white, weight: 900, align: 'center' },
-  );
+  if (disc) out.push(...offiSave(disc, asp, 22, 73, 56, 16));
   return out;
 }
 
@@ -386,10 +394,7 @@ function officineReglette(l: Label, o: SeedOpts): El[] {
   if (tag) out.push({ ...B, id: 'tag', kind: 'text', text: tag, x: 56, y: 7, w: 42, size: 0.07, color: OFFI.green, weight: 800, align: 'center', track: 0.1 });
   out.push(...offiPrice(priceVal, asp, 18, 0.34, 0.18, 54, 45));
   if (oldTxt) out.push({ ...B, id: 'old', kind: 'text', text: oldTxt, x: 55, y: 53, w: 44, size: 0.085, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.04 });
-  if (disc) out.push(
-    { ...B, id: 'burst', kind: 'box', shape: 'circle', x: 82, y: 60, w: 13, bg: OFFI.promo, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true },
-    { ...B, id: 'burstTxt', kind: 'text', text: disc, x: 82, y: 67, w: 13, size: fitSize(disc, 0.1, asp, 0.085, 1, 0.04), color: OFFI.white, weight: 900, align: 'center' },
-  );
+  if (disc) out.push(...offiSave(disc, asp, 60, 64, 36, 15));
   if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 54, y: 82, w: 30, size: fitSize(d.qtyLabel, 0.28, asp, 0.06, 1, 0.04), color: OFFI.muted, weight: 600, align: 'center', italic: true });
   if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 4, y: 82, w: 13, size: 0, color: '#000', weight: 400, align: 'left' });
   return out;
