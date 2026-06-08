@@ -247,6 +247,22 @@ function offiBurst(big: string, small: string | null, asp: number, y = 30, w = 4
   return out;
 }
 
+// Prix « charme » Officine : euros GROS + centimes/€ plus petits (réduit la « douleur du prix »).
+// Astuce merchandising : on aligne la VIRGULE au centre de la zone → le prix reste optiquement
+// centré quel que soit le nombre de chiffres, et les centimes montent en exposant.
+function offiPrice(raw: string, asp: number, y: number, bigCap: number, floor: number, x0 = 0, w = 99): El[] {
+  const promo = pf(raw);
+  const intp = Math.floor(promo).toString();
+  const cents = Math.round((promo - Math.floor(promo)) * 100).toString().padStart(2, '0');
+  const cx = x0 + w / 2; // position de la virgule = centre de la zone
+  const big = fitSize(intp, (cx - x0) / 100, asp, bigCap, 1, floor);
+  const small = Math.round(big * 0.42 * 1000) / 1000;
+  return [
+    { ...B, id: 'priceInt', kind: 'text', text: intp, x: x0, y, w: cx - x0, size: big, color: OFFI.promo, weight: 900, align: 'right' },
+    { ...B, id: 'priceDec', kind: 'text', text: `,${cents} €`, x: cx, y, w: x0 + w - cx, size: small, color: OFFI.promo, weight: 900, align: 'left' },
+  ];
+}
+
 function officinePrixPromo(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 0.7;
   const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
@@ -260,18 +276,18 @@ function officinePrixPromo(l: Label, o: SeedOpts): El[] {
   // 1) catégorie (bandeau) · 2) PRIX PROMO (héros) · 3) AU LIEU DE · 4) nom produit ·
   // 5) remise (disque) · 6) mentions légales (pied).
   const out: El[] = [...offiHeader(d, asp)];
-  // 2) Prix de vente en ROUGE (héros), juste sous la catégorie, ajusté à sa largeur.
-  out.push({ ...B, id: 'price', kind: 'text', text: `${d.promoPrice} €`, x: 2, y: 11, w: 96, size: fitSize(`${d.promoPrice} €`, 0.96, asp, 0.135, 1, 0.09), color: OFFI.promo, weight: 900, align: 'center' });
+  // 2) Prix de vente en ROUGE (héros), juste sous la catégorie — centimes en exposant.
+  out.push(...offiPrice(d.promoPrice, asp, 11, 0.18, 0.11));
   // 3) Au lieu de — ancien prix barré.
   if (hasOld) out.push(
-    { ...B, id: 'oldLabel', kind: 'text', text: 'AU LIEU DE', x: 0, y: 27, w: 100, size: 0.018, color: OFFI.muted, weight: 700, align: 'center', track: 0.14 },
-    { ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 29, w: 100, size: 0.034, color: OFFI.old, weight: 800, align: 'center', strike: true, strikeW: 0.045 },
+    { ...B, id: 'oldLabel', kind: 'text', text: 'AU LIEU DE', x: 0, y: 31, w: 100, size: 0.018, color: OFFI.muted, weight: 700, align: 'center', track: 0.14 },
+    { ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 33.5, w: 100, size: 0.034, color: OFFI.old, weight: 800, align: 'center', strike: true, strikeW: 0.045 },
   );
   // 4) Nom du produit (+ descriptif éventuel).
-  out.push({ ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 37, w: 90, size: fitSize(d.product, 0.92, asp, 0.05, 2, 0.03), color: OFFI.greenDark, weight: 900, align: 'center' });
-  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 50, w: 88, size: fitSize(d.qtyLabel, 0.92, asp, 0.022, 1, 0.016), color: OFFI.muted, weight: 600, align: 'center', italic: true });
+  out.push({ ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 42, w: 90, size: fitSize(d.product, 0.92, asp, 0.05, 2, 0.03), color: OFFI.greenDark, weight: 900, align: 'center' });
+  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 53.5, w: 88, size: fitSize(d.qtyLabel, 0.92, asp, 0.022, 1, 0.016), color: OFFI.muted, weight: 600, align: 'center', italic: true });
   // 5) Remise (ex. −4 €) — accroche, gros disque rouge centré.
-  if (discTxt) out.push(...offiBurst(discTxt, null, asp, 57, 38));
+  if (discTxt) out.push(...offiBurst(discTxt, null, asp, 59, 38));
   // 6) Mentions légales / validité.
   out.push(...offiFooter(l, o));
   return out;
@@ -339,7 +355,7 @@ function officineCompact(l: Label, o: SeedOpts): El[] {
   const hasOld = normal > pf(d.promoPrice);
   // Même ordre que le grand format, condensé : catégorie · PRIX · au lieu de · produit · remise.
   const out: El[] = [...offiHeader(d, asp)];
-  out.push({ ...B, id: 'price', kind: 'text', text: `${d.promoPrice} €`, x: 2, y: 13, w: 96, size: fitSize(`${d.promoPrice} €`, 0.96, asp, 0.2, 1, 0.12), color: OFFI.promo, weight: 900, align: 'center' });
+  out.push(...offiPrice(d.promoPrice, asp, 13, 0.24, 0.14));
   if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 40, w: 100, size: 0.05, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.05 });
   out.push({ ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 50, w: 92, size: fitSize(d.product, 0.92, asp, 0.072, 2, 0.044), color: OFFI.greenDark, weight: 900, align: 'center' });
   if (disc) out.push(
@@ -354,11 +370,11 @@ function officineReglette(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 2.5;
   const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
   const manual = (d.remiseManual || '').trim();
-  let priceTxt = `${d.promoPrice} €`, oldTxt = normal > pf(d.promoPrice) ? `${d.normalPrice} €` : '', tag = '';
+  let priceVal = d.promoPrice, oldTxt = normal > pf(d.promoPrice) ? `${d.normalPrice} €` : '', tag = '';
   let disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
-  if (l.type === 'bon-reduction') { priceTxt = `${d.couponValue} €`; oldTxt = ''; disc = ''; tag = 'BON DE RÉDUCTION'; }
-  else if (l.type === 'remise-lot') { priceTxt = `${d.lotPrice} €`; oldTxt = ''; disc = `+${Math.max(1, parseInt(d.lotFree) || 1)} OFFERT`; tag = 'LOT'; }
-  else if (l.type === 'multi-achat') { priceTxt = `${d.t3p || d.t1p} €`; oldTxt = ''; disc = ''; tag = 'MULTI-ACHAT'; }
+  if (l.type === 'bon-reduction') { priceVal = d.couponValue; oldTxt = ''; disc = ''; tag = 'BON DE RÉDUCTION'; }
+  else if (l.type === 'remise-lot') { priceVal = d.lotPrice; oldTxt = ''; disc = `+${Math.max(1, parseInt(d.lotFree) || 1)} OFFERT`; tag = 'LOT'; }
+  else if (l.type === 'multi-achat') { priceVal = d.t3p || d.t1p; oldTxt = ''; disc = ''; tag = 'MULTI-ACHAT'; }
   const out: El[] = [
     { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: OFFI.bg, size: 0, color: OFFI.bg, weight: 400, align: 'left' },
     { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 54, h: 100, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
@@ -368,7 +384,7 @@ function officineReglette(l: Label, o: SeedOpts): El[] {
   ];
   // Colonne droite, même ordre que les autres formats : tag · PRIX (héros) · au lieu de · remise.
   if (tag) out.push({ ...B, id: 'tag', kind: 'text', text: tag, x: 56, y: 7, w: 42, size: 0.07, color: OFFI.green, weight: 800, align: 'center', track: 0.1 });
-  out.push({ ...B, id: 'price', kind: 'text', text: priceTxt, x: 54, y: 18, w: 45, size: fitSize(priceTxt, 0.42, asp, 0.34, 1, 0.18), color: OFFI.promo, weight: 900, align: 'center' });
+  out.push(...offiPrice(priceVal, asp, 18, 0.34, 0.18, 54, 45));
   if (oldTxt) out.push({ ...B, id: 'old', kind: 'text', text: oldTxt, x: 55, y: 53, w: 44, size: 0.085, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.04 });
   if (disc) out.push(
     { ...B, id: 'burst', kind: 'box', shape: 'circle', x: 82, y: 60, w: 13, bg: OFFI.promo, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true },
