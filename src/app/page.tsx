@@ -250,18 +250,18 @@ function offiBurst(big: string, small: string | null, asp: number, y = 30, w = 4
 // Pastille « remise » Officine : pilule rouge horizontale, texte blanc maximisé.
 // Une pilule large laisse bien plus de place au chiffre qu'un disque (qui gaspille les coins)
 // → la remise « -5€ / -30% » est nettement plus lisible de loin, à surface égale.
-function offiSave(txt: string, asp: number, x: number, y: number, w: number, h: number): El[] {
+function offiSave(txt: string, asp: number, x: number, y: number, w: number, h: number, bg = OFFI.promo, fg = OFFI.white): El[] {
   const fs = fitSize(txt, (w / 100) * 0.8, asp, (h / 100) * 0.66, 1, 0.04);
   return [
-    { ...B, id: 'saveBox', kind: 'box', x, y, w, h, bg: OFFI.promo, radius: 999, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true },
-    { ...B, id: 'saveTxt', kind: 'text', text: txt, x, y: y + (h - fs * 100) / 2, w, size: fs, color: OFFI.white, weight: 900, align: 'center', track: 0.01 },
+    { ...B, id: 'saveBox', kind: 'box', x, y, w, h, bg, radius: 999, size: 0, color: bg, weight: 400, align: 'left', shadow: true },
+    { ...B, id: 'saveTxt', kind: 'text', text: txt, x, y: y + (h - fs * 100) / 2, w, size: fs, color: fg, weight: 900, align: 'center', track: 0.01 },
   ];
 }
 
 // Prix « charme » Officine : euros GROS + centimes/€ plus petits (réduit la « douleur du prix »).
 // Astuce merchandising : on aligne la VIRGULE au centre de la zone → le prix reste optiquement
 // centré quel que soit le nombre de chiffres, et les centimes montent en exposant.
-function offiPrice(raw: string, asp: number, y: number, bigCap: number, floor: number, x0 = 0, w = 99): El[] {
+function offiPrice(raw: string, asp: number, y: number, bigCap: number, floor: number, x0 = 0, w = 99, color = OFFI.promo): El[] {
   const promo = pf(raw);
   const intp = Math.floor(promo).toString();
   const cents = Math.round((promo - Math.floor(promo)) * 100).toString().padStart(2, '0');
@@ -269,8 +269,8 @@ function offiPrice(raw: string, asp: number, y: number, bigCap: number, floor: n
   const big = fitSize(intp, (cx - x0) / 100, asp, bigCap, 1, floor);
   const small = Math.round(big * 0.42 * 1000) / 1000;
   return [
-    { ...B, id: 'priceInt', kind: 'text', text: intp, x: x0, y, w: cx - x0, size: big, color: OFFI.promo, weight: 900, align: 'right' },
-    { ...B, id: 'priceDec', kind: 'text', text: `,${cents} €`, x: cx, y, w: x0 + w - cx, size: small, color: OFFI.promo, weight: 900, align: 'left' },
+    { ...B, id: 'priceInt', kind: 'text', text: intp, x: x0, y, w: cx - x0, size: big, color, weight: 900, align: 'right' },
+    { ...B, id: 'priceDec', kind: 'text', text: `,${cents} €`, x: cx, y, w: x0 + w - cx, size: small, color, weight: 900, align: 'left' },
   ];
 }
 
@@ -400,6 +400,26 @@ function officineReglette(l: Label, o: SeedOpts): El[] {
   return out;
 }
 
+// ── Promo COMPACT (petits formats : rayon, petite) : le thème jaune n'avait pas de
+// gabarit petit format → la grosse mise en page portrait débordait. Version épurée et
+// lisible : bandeau catégorie, prix charme rouge, ancien prix barré, pastille remise. ──
+function daCompact(l: Label, o: SeedOpts): El[] {
+  const d = l.data, asp = o.aspect || 0.8;
+  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
+  const manual = (d.remiseManual || '').trim();
+  const disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
+  const hasOld = normal > pf(d.promoPrice);
+  const out: El[] = [
+    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 10, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
+    { ...B, id: 'cat', kind: 'text', text: d.category, x: 2, y: 2.6, w: 96, size: fitSize(d.category, 0.94, asp, 0.045, 1, 0.028), color: '#fff', weight: 800, align: 'center' },
+  ];
+  out.push(...offiPrice(d.promoPrice, asp, 14, 0.24, 0.14, 0, 99, DA.red));
+  if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 41, w: 100, size: 0.045, color: '#A89A6E', weight: 700, align: 'center', strike: true, strikeW: 0.05 });
+  out.push({ ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 51, w: 92, size: fitSize(d.product, 0.92, asp, 0.072, 2, 0.044), color: DA.green, weight: 900, align: 'center' });
+  if (disc) out.push(...offiSave(disc, asp, 22, 74, 56, 16, DA.red, '#fff'));
+  return out;
+}
+
 function seedEls(l: Label, o: SeedOpts): El[] {
   if (o.theme === 'officine') {
     // Gabarit choisi selon la forme : paysage → réglette, petit → compact, sinon portrait.
@@ -407,6 +427,8 @@ function seedEls(l: Label, o: SeedOpts): El[] {
     if (o.small && l.type === 'prix-promo') return officineCompact(l, o);
     return officineSeed(l, o);
   }
+  // Thème Promo (jaune) : petits formats prix-promo → gabarit compact responsive.
+  if (o.small && !o.landscape && l.type === 'prix-promo') return daCompact(l, o);
   const a = l.accent, d = l.data;
   const asp = o.aspect || 0.7;
   // Aplat mat, centré : pas de point lumineux blanc, léger fondu vers le bord.
