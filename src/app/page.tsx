@@ -541,12 +541,13 @@ function seedEls(l: Label, o: SeedOpts): El[] {
   if (l.type === 'bon-reduction') {
     return [
       ...frame,
-      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 22, y: 11, w: 56, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      { ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 24, y: 17, w: 52, size: 0.028, color: '#fff', weight: 800, align: 'center' },
-      { ...B, id: 'priceInt', kind: 'text', text: pf(d.couponValue).toString().split('.')[0] || '0', x: 30, y: 22, size: 0.16, color: DA.priceY, weight: 900, align: 'left' },
-      { ...B, id: 'euro', kind: 'text', text: '€', x: 58, y: 23, size: 0.06, color: DA.priceY, weight: 900, align: 'left' },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 58, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.03), color: '#21392B', weight: 800, align: 'center' },
-      { ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 6, y: 72, w: 88, size: 0.035, color: DA.green, weight: 600, align: 'center' },
+      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 19, y: 10, w: 62, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
+      { ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 19, y: 16, w: 62, size: 0.03, color: '#fff', weight: 800, align: 'center', track: 0.04 },
+      // Valeur du bon = héros (prix charme jaune, adaptatif) centré dans le cercle.
+      ...offiPrice(d.couponValue, asp, 23, 0.17, 0.09, 19, 62, DA.priceY),
+      { ...B, id: 'bsub', kind: 'text', text: 'DE RÉDUCTION', x: 19, y: 45, w: 62, size: 0.03, color: '#fff', weight: 800, align: 'center', track: 0.08 },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 60, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.028), color: '#21392B', weight: 800, align: 'center' },
+      { ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 6, y: 74, w: 88, size: fitSize(`Valable jusqu'au ${d.couponExpiry}`, 0.88, asp, 0.035, 1, 0.022), color: DA.green, weight: 600, align: 'center' },
     ];
   }
 
@@ -573,16 +574,17 @@ function seedEls(l: Label, o: SeedOpts): El[] {
   const cols = [{ q: d.t1q, p: d.t1p }, { q: d.t2q, p: d.t2p }, { q: d.t3q, p: d.t3p }];
   const els: El[] = [
     ...frame,
-    { ...B, id: 'mtitle', kind: 'text', text: 'OFFRE MULTI-ACHAT', x: 6, y: 12, w: 88, size: 0.05, color: DA.red, weight: 900, align: 'center' },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 20, w: 88, size: fitSize(d.product, 0.88, asp, 0.06, 2, 0.035), color: DA.green, weight: 800, align: 'center' },
+    { ...B, id: 'mtitle', kind: 'text', text: 'OFFRE MULTI-ACHAT', x: 6, y: 11, w: 88, size: 0.048, color: DA.red, weight: 900, align: 'center' },
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 18, w: 88, size: fitSize(d.product, 0.88, asp, 0.055, 2, 0.032), color: DA.green, weight: 800, align: 'center' },
   ];
+  // 3 cartes (qté + prix empilés) ; meilleur palier mis en avant (rouge + prix jaune).
   cols.forEach((c, i) => {
-    const cx = 8 + i * 29;
-    els.push({ ...B, id: `q${i}`, kind: 'box', x: cx, y: 34, w: 26, h: 8, bg: i === 2 ? DA.red : DA.band, size: 0, color: '#fff', weight: 400, align: 'center', radius: 6 });
-    els.push({ ...B, id: `qt${i}`, kind: 'text', text: `${c.q} pce${parseInt(c.q) > 1 ? 's' : ''}`, x: cx, y: 35.5, w: 26, size: 0.03, color: '#fff', weight: 800, align: 'center' });
-    els.push({ ...B, id: `p${i}`, kind: 'text', text: `${c.p}€`, x: cx, y: 46, w: 26, size: 0.07, color: DA.red, weight: 900, align: 'center' });
+    const cx = 6 + i * 30, best = i === 2;
+    els.push({ ...B, id: `q${i}`, kind: 'box', x: cx, y: 34, w: 27, h: 30, bg: best ? DA.red : DA.band, size: 0, color: '#fff', weight: 400, align: 'center', radius: 12, shadow: best });
+    els.push({ ...B, id: `qt${i}`, kind: 'text', text: `${c.q} pce${parseInt(c.q) > 1 ? 's' : ''}`, x: cx, y: 38.5, w: 27, size: 0.032, color: '#fff', weight: 800, align: 'center' });
+    els.push({ ...B, id: `p${i}`, kind: 'text', text: `${c.p}€`, x: cx, y: 48, w: 27, size: fitSize(`${c.p}€`, 0.27, asp, 0.062, 1, 0.035), color: best ? DA.priceY : '#fff', weight: 900, align: 'center' });
   });
-  els.push({ ...B, id: 'mfoot', kind: 'text', text: 'Plus vous achetez, plus vous économisez', x: 6, y: 62, w: 88, size: 0.035, color: DA.green, weight: 600, align: 'center' });
+  els.push({ ...B, id: 'mfoot', kind: 'text', text: 'Plus vous achetez, plus vous économisez', x: 6, y: 70, w: 88, size: fitSize('Plus vous achetez, plus vous économisez', 0.88, asp, 0.034, 1, 0.022), color: DA.green, weight: 600, align: 'center' });
   return els;
 }
 
