@@ -564,11 +564,12 @@ function EditableText({ initial, onCommit, onCancel }: { initial: string; onComm
   );
 }
 
-interface DragState { labelId: string; elId: string; offX: number; offY: number; box: HTMLElement; }
+interface DragState { labelId: string; elId: string; offX: number; offY: number; box: HTMLElement; elW: number; elH: number; }
+type Snap = { x: boolean; y: boolean };
 
-function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSelectLabel, onSelectEl, onDragStart, onDelEl, onAddText, editId, onStartEdit, onCommitText, onEndEdit, onDeleteLabel }: {
+function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, snap, onSelectLabel, onSelectEl, onDragStart, onDelEl, onAddText, editId, onStartEdit, onCommitText, onEndEdit, onDeleteLabel }: {
   label: Label; W: number; H: number; editing: boolean; opts: SeedOpts;
-  selectedLabel: boolean; selectedEl: string | null;
+  selectedLabel: boolean; selectedEl: string | null; snap?: Snap | null;
   onSelectLabel: () => void; onSelectEl: (id: string) => void;
   onDragStart: (e: React.PointerEvent, labelId: string, elId: string, el: El) => void;
   onDelEl: (id: string) => void;
@@ -585,6 +586,12 @@ function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, onSe
       onDoubleClick={editing && onAddText ? (ev) => { ev.stopPropagation(); const r = (ev.currentTarget as HTMLElement).getBoundingClientRect(); onAddText(Math.max(0, ((ev.clientX - r.left) / r.width) * 100 - 32), Math.max(0, ((ev.clientY - r.top) / r.height) * 100 - 2)); } : undefined}
       style={{ position: 'relative', width: W, height: H, background: bg, border: editing ? `1px solid ${selectedLabel ? selColor : 'rgba(0,0,0,0.08)'}` : 'none', borderRadius: editing ? 6 : 0, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${selColor}44` : 'none', flexShrink: 0, boxSizing: 'border-box' }}>
       <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.7, pointerEvents: 'none' }} />
+      {/* Repères d'alignement : axes central vertical + horizontal (aide au centrage).
+          Affichés sur l'étiquette sélectionnée ; mis en évidence (couleur) quand le bloc s'aimante au centre. */}
+      {editing && selectedLabel && <>
+        <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 0, transform: 'translateX(-0.5px)', borderLeft: `1px dashed ${snap?.x ? selColor : 'rgba(0,0,0,0.28)'}`, opacity: snap?.x ? 1 : 0.55, pointerEvents: 'none', zIndex: 5 }} />
+        <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 0, transform: 'translateY(-0.5px)', borderTop: `1px dashed ${snap?.y ? selColor : 'rgba(0,0,0,0.28)'}`, opacity: snap?.y ? 1 : 0.55, pointerEvents: 'none', zIndex: 5 }} />
+      </>}
       {els.map(e => {
         const sel = editing && selectedEl === e.id;
         const editable = e.kind === 'text' || e.kind === 'pill';
@@ -647,9 +654,9 @@ function layout(p: Project) {
   return { fmt, lw, lh, m, gap, header, PW, PH, pageWmm, pageHmm, usableW, perRow, capacity, landscape, small, mixed };
 }
 
-function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSelEl, onAdd, dragStart, delEl, addTextAt, editId, startEdit, commitText, endEdit, deleteLabelId, forPrint }: {
+function Planche({ project, scale, editing, selLabel, selEl, snap, setSelLabel, setSelEl, onAdd, dragStart, delEl, addTextAt, editId, startEdit, commitText, endEdit, deleteLabelId, forPrint }: {
   project: Project; scale: number; editing: boolean;
-  selLabel: string | null; selEl: string | null;
+  selLabel: string | null; selEl: string | null; snap?: Snap | null;
   setSelLabel: (id: string | null) => void; setSelEl: (id: string | null) => void;
   onAdd: () => void; dragStart: (e: React.PointerEvent, labelId: string, elId: string, el: El) => void;
   delEl: (id: string) => void; addTextAt: (labelId: string, x: number, y: number) => void;
@@ -664,7 +671,7 @@ function Planche({ project, scale, editing, selLabel, selEl, setSelLabel, setSel
           const sz = sizeOf(label, project);
           return (
           <LabelView key={label.id} label={label} W={sz.w * MM} H={sz.h * MM} editing={editing && !forPrint} opts={optsFor(label, project, editing && !forPrint)}
-            selectedLabel={selLabel === label.id} selectedEl={selLabel === label.id ? selEl : null}
+            selectedLabel={selLabel === label.id} selectedEl={selLabel === label.id ? selEl : null} snap={selLabel === label.id ? snap : null}
             onSelectLabel={() => setSelLabel(label.id)} onSelectEl={(id) => { setSelLabel(label.id); setSelEl(id); }}
             onDragStart={dragStart} onDelEl={delEl} onAddText={(x, y) => addTextAt(label.id, x, y)} onDeleteLabel={deleteLabelId ? () => deleteLabelId(label.id) : undefined}
             editId={editId} onStartEdit={startEdit} onCommitText={commitText} onEndEdit={endEdit} />
@@ -1234,6 +1241,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const [pctBadge, setPctBadge] = useState('20');
   const [editId, setEditId] = useState<string | null>(null);
   const drag = useRef<DragState | null>(null);
+  const [snap, setSnap] = useState<Snap>({ x: false, y: false });
   const isMobile = useMobile();
   const L = layout(project);
 
@@ -1314,19 +1322,28 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const uploadPharmaLogo = (file: File) => { const r = new FileReader(); r.onload = () => setProject(p => ({ ...p, logo: r.result as string })); r.readAsDataURL(file); };
 
   const dragStart = (ev: React.PointerEvent, labelId: string, elId: string, el: El) => {
-    const box = (ev.currentTarget as HTMLElement).closest('[data-labelbox]') as HTMLElement; if (!box) return;
-    const r = box.getBoundingClientRect();
-    drag.current = { labelId, elId, offX: ((ev.clientX - r.left) / r.width) * 100 - el.x, offY: ((ev.clientY - r.top) / r.height) * 100 - el.y, box };
-    (ev.currentTarget as HTMLElement).setPointerCapture?.(ev.pointerId);
+    const target = ev.currentTarget as HTMLElement;
+    const box = target.closest('[data-labelbox]') as HTMLElement; if (!box) return;
+    const r = box.getBoundingClientRect(), er = target.getBoundingClientRect();
+    // Taille du bloc en % de l'étiquette → permet d'aligner son CENTRE sur l'axe central.
+    drag.current = { labelId, elId, offX: ((ev.clientX - r.left) / r.width) * 100 - el.x, offY: ((ev.clientY - r.top) / r.height) * 100 - el.y, box, elW: (er.width / r.width) * 100, elH: (er.height / r.height) * 100 };
+    target.setPointerCapture?.(ev.pointerId);
   };
   useEffect(() => {
+    const SNAP = 1.5; // seuil d'aimantage (% de l'étiquette)
     const move = (ev: PointerEvent) => {
       const ds = drag.current; if (!ds) return; const r = ds.box.getBoundingClientRect();
-      const nx = Math.max(-8, Math.min(99, ((ev.clientX - r.left) / r.width) * 100 - ds.offX));
-      const ny = Math.max(-8, Math.min(99, ((ev.clientY - r.top) / r.height) * 100 - ds.offY));
+      let nx = Math.max(-8, Math.min(99, ((ev.clientX - r.left) / r.width) * 100 - ds.offX));
+      let ny = Math.max(-8, Math.min(99, ((ev.clientY - r.top) / r.height) * 100 - ds.offY));
+      // Aimantage au centre : on aligne le centre du bloc sur 50 %. Shift = désactivé (placement libre).
+      const sx = !ev.shiftKey && Math.abs(nx + ds.elW / 2 - 50) < SNAP;
+      const sy = !ev.shiftKey && Math.abs(ny + ds.elH / 2 - 50) < SNAP;
+      if (sx) nx = 50 - ds.elW / 2;
+      if (sy) ny = 50 - ds.elH / 2;
+      setSnap(s => (s.x === sx && s.y === sy) ? s : { x: sx, y: sy });
       updateLabel(ds.labelId, l => isBound(l, ds.elId) ? { ...l, overrides: { ...l.overrides, [ds.elId]: { ...l.overrides[ds.elId], x: nx, y: ny } } } : { ...l, extra: l.extra.map(e => e.id === ds.elId ? { ...e, x: nx, y: ny } : e) });
     };
-    const up = () => { drag.current = null; };
+    const up = () => { drag.current = null; setSnap(s => (s.x || s.y) ? { x: false, y: false } : s); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, [updateLabel]);
@@ -1377,7 +1394,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
           {overflow && <div style={{ background: '#7c2d12', color: '#fed7aa', fontSize: 12, padding: '6px 16px' }}>⚠ {project.labels.length} étiquettes pour {L.capacity} emplacement(s) — réduisez la taille ou changez de format.</div>}
           <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? 8 : 28, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
             <div style={{ width: L.PW * scale, height: L.PH * scale, flexShrink: 0 }}>
-              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} editId={editId} startEdit={(id) => { pickEl(id); setEditId(id); }} commitText={(id, t) => patchElById(id, { text: t })} endEdit={() => setEditId(null)} deleteLabelId={deleteLabelById} />
+              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} snap={snap} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} editId={editId} startEdit={(id) => { pickEl(id); setEditId(id); }} commitText={(id, t) => patchElById(id, { text: t })} endEdit={() => setEditId(null)} deleteLabelId={deleteLabelById} />
             </div>
           </div>
         </main>
