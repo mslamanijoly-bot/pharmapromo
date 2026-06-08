@@ -411,7 +411,7 @@ function daCompact(l: Label, o: SeedOpts): El[] {
     { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 10, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
     { ...B, id: 'cat', kind: 'text', text: d.category, x: 2, y: 2.6, w: 96, size: fitSize(d.category, 0.94, asp, 0.045, 1, 0.028), color: '#fff', weight: 800, align: 'center' },
   ];
-  const product = (y: number) => ({ ...B, id: 'product', kind: 'text' as ElKind, text: d.product, x: 4, y, w: 92, size: fitSize(d.product, 0.92, asp, 0.066, 2, 0.04), color: DA.green, weight: 900, align: 'center' as Align });
+  const product = (y: number) => ({ ...B, id: 'product', kind: 'text' as ElKind, text: d.product, x: 4, y, w: 92, size: fitSize(d.product, 0.92, asp, 0.066, 2, 0.03), color: DA.green, weight: 900, align: 'center' as Align });
 
   if (l.type === 'bon-reduction') {
     out.push({ ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 2, y: 12, w: 96, size: fitSize('BON DE RÉDUCTION', 0.9, asp, 0.04, 1, 0.024), color: DA.green, weight: 800, align: 'center', track: 0.06 });
@@ -462,7 +462,7 @@ function daReglette(l: Label, o: SeedOpts): El[] {
     { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 54, h: 100, bg: DA.band, size: 0, color: DA.band, weight: 400, align: 'left' },
     { ...B, id: 'cross', kind: 'text', text: '✚', x: 3, y: 7, size: 0.14, color: '#fff', weight: 900, align: 'left' },
     { ...B, id: 'cat', kind: 'text', text: d.category, x: 14, y: 10, w: 38, size: fitSize(d.category, 0.36, asp, 0.1, 1, 0.05), color: '#fff', weight: 800, align: 'left', track: 0.06 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 33, w: 48, size: fitSize(d.product, 0.46, asp, 0.16, 3, 0.075), color: '#fff', weight: 900, align: 'left' },
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 33, w: 48, size: fitSize(d.product, 0.46, asp, 0.16, 3, 0.05), color: '#fff', weight: 900, align: 'left' },
   ];
   if (tag) out.push({ ...B, id: 'tag', kind: 'text', text: tag, x: 56, y: 7, w: 42, size: 0.07, color: DA.green, weight: 800, align: 'center', track: 0.1 });
   out.push(...offiPrice(priceVal, asp, 18, 0.31, 0.18, 54, 45, DA.red));
@@ -509,32 +509,23 @@ function seedEls(l: Label, o: SeedOpts): El[] {
         { ...B, id: 'priceInt', kind: 'text', text: intp, x: 66, y: 18, size: 0.42, color: DA.priceY, weight: 900, align: 'left' },
         { ...B, id: 'euro', kind: 'text', text: '€', x: 85, y: 20.5, size: 0.135, color: DA.priceY, weight: 900, align: 'left' },
         { ...B, id: 'cents', kind: 'text', text: cents, x: 85, y: 37, size: 0.15, color: DA.priceY, weight: 900, align: 'left' },
-        ...(remiseTxt ? [
-          // Empilé + centré sous le prix : le montant ne peut plus chevaucher le libellé.
-          { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 66, y: 60.5, w: 28, h: 1.2, bg: '#ffffffcc', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
-          { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: remiseTxt, x: 60, y: 62, w: 40, size: fitSize(remiseTxt, 0.4, asp, 0.1, 1, 0.06), color: '#fff', weight: 900, align: 'center' as Align },
-          { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 60, y: 73.5, w: 40, size: 0.04, color: '#fff', weight: 800, align: 'center' as Align, track: 0.03 },
-        ] : []),
+        // Remise en pastille rouge distincte (plus jamais confondue avec le prix jaune).
+        ...(remiseTxt ? offiSave(remiseTxt, asp, 62, 62, 34, 13, DA.red, '#fff') : []),
         ...footEls(l, o),
       ];
     }
-    // PORTRAIT — bandeau, cercle prix, produit, descriptif
+    // PORTRAIT — cercle prix (charme jaune, adaptatif), remise en pastille DISTINCTE, produit.
     return [
       { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 7, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
       { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 1.7, w: 100, size: fitSize(d.category, 0.96, asp, 0.027, 1, 0.016), color: '#fff', weight: 800, align: 'center' },
-      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 19, y: 9, w: 62, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: `${d.normalPrice}€`, x: 31, y: 14, w: 38, size: 0.027, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
-      { ...B, id: 'priceInt', kind: 'text', text: intp, x: 27, y: 17, size: 0.175, color: DA.priceY, weight: 900, align: 'left' },
-      { ...B, id: 'euro', kind: 'text', text: '€', x: 60, y: 18.5, size: 0.052, color: DA.priceY, weight: 900, align: 'left' },
-      { ...B, id: 'cents', kind: 'text', text: cents, x: 60, y: 27, size: 0.062, color: DA.priceY, weight: 900, align: 'left' },
-      ...(remiseTxt ? [
-        // Empilé + centré dans le cercle : montant au-dessus, libellé dessous (plus de chevauchement).
-        { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 35, y: 40, w: 30, h: 0.5, bg: '#ffffffcc', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
-        { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: remiseTxt, x: 19, y: 42, w: 62, size: fitSize(remiseTxt, 0.62, asp, 0.055, 1, 0.032), color: '#fff', weight: 900, align: 'center' as Align },
-        { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 19, y: 49.5, w: 62, size: 0.02, color: '#fff', weight: 800, align: 'center' as Align, track: 0.04 },
-      ] : []),
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 56, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.03), color: '#21392B', weight: 800, align: 'center' },
-      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 70, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.037, 1, 0.024), color: DA.green, weight: 600, align: 'center' as Align }] : []),
+      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 21, y: 9, w: 58, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
+      ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: `${d.normalPrice} €`, x: 21, y: 13, w: 58, size: 0.026, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
+      // Prix de vente charme (euros gros + centimes/€) centré dans le cercle.
+      ...offiPrice(d.promoPrice, asp, 18, 0.155, 0.085, 21, 58, DA.priceY),
+      // Remise = pastille rouge sous le cercle, jamais confondue avec le prix.
+      ...(remiseTxt ? offiSave(remiseTxt, asp, 27, 52, 46, 12, DA.red, '#fff') : []),
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 66, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.026), color: '#21392B', weight: 800, align: 'center' },
+      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 80, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: DA.green, weight: 600, align: 'center' as Align }] : []),
       ...footEls(l, o),
     ];
   }
