@@ -405,18 +405,71 @@ function officineReglette(l: Label, o: SeedOpts): El[] {
 // lisible : bandeau catégorie, prix charme rouge, ancien prix barré, pastille remise. ──
 function daCompact(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 0.8;
-  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
-  const manual = (d.remiseManual || '').trim();
-  const disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
-  const hasOld = normal > pf(d.promoPrice);
+  const GOLD = '#A89A6E';
+  // En-tête commun : bandeau vert + catégorie.
   const out: El[] = [
     { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 10, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
     { ...B, id: 'cat', kind: 'text', text: d.category, x: 2, y: 2.6, w: 96, size: fitSize(d.category, 0.94, asp, 0.045, 1, 0.028), color: '#fff', weight: 800, align: 'center' },
   ];
+  const product = (y: number) => ({ ...B, id: 'product', kind: 'text' as ElKind, text: d.product, x: 4, y, w: 92, size: fitSize(d.product, 0.92, asp, 0.066, 2, 0.04), color: DA.green, weight: 900, align: 'center' as Align });
+
+  if (l.type === 'bon-reduction') {
+    out.push({ ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 2, y: 12, w: 96, size: fitSize('BON DE RÉDUCTION', 0.9, asp, 0.04, 1, 0.024), color: DA.green, weight: 800, align: 'center', track: 0.06 });
+    out.push(product(22));
+    out.push(...offiPrice(d.couponValue, asp, 40, 0.22, 0.12, 0, 99, DA.red));
+    out.push({ ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 4, y: 82, w: 92, size: fitSize(`Valable jusqu'au ${d.couponExpiry}`, 0.9, asp, 0.035, 1, 0.022), color: DA.green, weight: 700, align: 'center' });
+    return out;
+  }
+  if (l.type === 'remise-lot') {
+    const free = Math.max(1, parseInt(d.lotFree) || 1);
+    out.push(product(13));
+    out.push(...offiSave(`+${free} OFFERT${free > 1 ? 'S' : ''}`, asp, 12, 34, 76, 22, DA.red, '#fff'));
+    out.push({ ...B, id: 'lotPrice', kind: 'text', text: `LE LOT : ${d.lotPrice} €`, x: 2, y: 66, w: 96, size: fitSize(`LE LOT : ${d.lotPrice} €`, 0.94, asp, 0.07, 1, 0.04), color: DA.red, weight: 900, align: 'center' });
+    return out;
+  }
+  if (l.type === 'multi-achat') {
+    // Petit format : on met en avant le meilleur palier (le plus avantageux).
+    const q = d.t3q || d.t1q, p = d.t3p || d.t1p;
+    out.push(product(13));
+    out.push({ ...B, id: 'mtitle', kind: 'text', text: `DÈS ${q} ACHETÉS`, x: 2, y: 33, w: 96, size: fitSize(`DÈS ${q} ACHETÉS`, 0.9, asp, 0.045, 1, 0.028), color: DA.green, weight: 800, align: 'center', track: 0.04 });
+    out.push(...offiPrice(p, asp, 44, 0.22, 0.12, 0, 99, DA.red));
+    return out;
+  }
+  // ── PRIX PROMO (défaut) ──
+  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
+  const manual = (d.remiseManual || '').trim();
+  const disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
   out.push(...offiPrice(d.promoPrice, asp, 14, 0.24, 0.14, 0, 99, DA.red));
-  if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 41, w: 100, size: 0.045, color: '#A89A6E', weight: 700, align: 'center', strike: true, strikeW: 0.05 });
-  out.push({ ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 51, w: 92, size: fitSize(d.product, 0.92, asp, 0.072, 2, 0.044), color: DA.green, weight: 900, align: 'center' });
+  if (normal > pf(d.promoPrice)) out.push({ ...B, id: 'old', kind: 'text', text: `${d.normalPrice} €`, x: 0, y: 41, w: 100, size: 0.045, color: GOLD, weight: 700, align: 'center', strike: true, strikeW: 0.05 });
+  out.push(product(51));
   if (disc) out.push(...offiSave(disc, asp, 22, 74, 56, 16, DA.red, '#fff'));
+  return out;
+}
+
+// ── Promo RÉGLETTE (paysage) : identité verte à gauche, prix à droite — tous types.
+// Clone de la géométrie Officine (déjà validée) avec la palette jaune/vert/rouge. ──
+function daReglette(l: Label, o: SeedOpts): El[] {
+  const d = l.data, asp = o.aspect || 2.5;
+  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
+  const manual = (d.remiseManual || '').trim();
+  let priceVal = d.promoPrice, oldTxt = normal > pf(d.promoPrice) ? `${d.normalPrice} €` : '', tag = '';
+  let disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
+  if (l.type === 'bon-reduction') { priceVal = d.couponValue; oldTxt = ''; disc = ''; tag = 'BON DE RÉDUCTION'; }
+  else if (l.type === 'remise-lot') { priceVal = d.lotPrice; oldTxt = ''; disc = `+${Math.max(1, parseInt(d.lotFree) || 1)} OFFERT`; tag = 'LOT'; }
+  else if (l.type === 'multi-achat') { priceVal = d.t3p || d.t1p; oldTxt = ''; disc = ''; tag = 'MULTI-ACHAT'; }
+  const out: El[] = [
+    { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: DA.bg, size: 0, color: DA.bg, weight: 400, align: 'left' },
+    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 54, h: 100, bg: DA.band, size: 0, color: DA.band, weight: 400, align: 'left' },
+    { ...B, id: 'cross', kind: 'text', text: '✚', x: 3, y: 7, size: 0.14, color: '#fff', weight: 900, align: 'left' },
+    { ...B, id: 'cat', kind: 'text', text: d.category, x: 14, y: 10, w: 38, size: fitSize(d.category, 0.36, asp, 0.1, 1, 0.05), color: '#fff', weight: 800, align: 'left', track: 0.06 },
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 33, w: 48, size: fitSize(d.product, 0.46, asp, 0.16, 3, 0.075), color: '#fff', weight: 900, align: 'left' },
+  ];
+  if (tag) out.push({ ...B, id: 'tag', kind: 'text', text: tag, x: 56, y: 7, w: 42, size: 0.07, color: DA.green, weight: 800, align: 'center', track: 0.1 });
+  out.push(...offiPrice(priceVal, asp, 18, 0.31, 0.18, 54, 45, DA.red));
+  if (oldTxt) out.push({ ...B, id: 'old', kind: 'text', text: oldTxt, x: 55, y: 53, w: 44, size: 0.085, color: '#9A8F6A', weight: 700, align: 'center', strike: true, strikeW: 0.04 });
+  if (disc) out.push(...offiSave(disc, asp, 60, 64, 36, 15, DA.red, '#fff'));
+  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 54, y: 82, w: 30, size: fitSize(d.qtyLabel, 0.28, asp, 0.06, 1, 0.04), color: DA.ink, weight: 600, align: 'center', italic: true });
+  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 4, y: 82, w: 13, size: 0, color: '#000', weight: 400, align: 'left' });
   return out;
 }
 
@@ -427,8 +480,9 @@ function seedEls(l: Label, o: SeedOpts): El[] {
     if (o.small && l.type === 'prix-promo') return officineCompact(l, o);
     return officineSeed(l, o);
   }
-  // Thème Promo (jaune) : petits formats prix-promo → gabarit compact responsive.
-  if (o.small && !o.landscape && l.type === 'prix-promo') return daCompact(l, o);
+  // Thème Promo (jaune) : rendu responsive pour les cas que la mise en page portrait gère mal.
+  if (o.small && !o.landscape) return daCompact(l, o);                       // petits formats, tous types
+  if (o.landscape && l.type !== 'prix-promo') return daReglette(l, o);        // réglette bon/lot/multi
   const a = l.accent, d = l.data;
   const asp = o.aspect || 0.7;
   // Aplat mat, centré : pas de point lumineux blanc, léger fondu vers le bord.
