@@ -392,7 +392,7 @@ function officineReglette(l: Label, o: SeedOpts): El[] {
   ];
   // Colonne droite, même ordre que les autres formats : tag · PRIX (héros) · au lieu de · remise.
   if (tag) out.push({ ...B, id: 'tag', kind: 'text', text: tag, x: 56, y: 7, w: 42, size: 0.07, color: OFFI.green, weight: 800, align: 'center', track: 0.1 });
-  out.push(...offiPrice(priceVal, asp, 18, 0.34, 0.18, 54, 45));
+  out.push(...offiPrice(priceVal, asp, 18, 0.31, 0.18, 54, 45));
   if (oldTxt) out.push({ ...B, id: 'old', kind: 'text', text: oldTxt, x: 55, y: 53, w: 44, size: 0.085, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.04 });
   if (disc) out.push(...offiSave(disc, asp, 60, 64, 36, 15));
   if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 54, y: 82, w: 30, size: fitSize(d.qtyLabel, 0.28, asp, 0.06, 1, 0.04), color: OFFI.muted, weight: 600, align: 'center', italic: true });
@@ -434,9 +434,10 @@ function seedEls(l: Label, o: SeedOpts): El[] {
         { ...B, id: 'euro', kind: 'text', text: '€', x: 85, y: 20.5, size: 0.135, color: DA.priceY, weight: 900, align: 'left' },
         { ...B, id: 'cents', kind: 'text', text: cents, x: 85, y: 37, size: 0.15, color: DA.priceY, weight: 900, align: 'left' },
         ...(remiseTxt ? [
-          { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 64, y: 61, w: 30, h: 1.2, bg: '#ffffffcc', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
-          { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: remiseTxt, x: 64, y: 63.5, size: 0.12, color: '#fff', weight: 900, align: 'left' as Align },
-          { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 77, y: 64.5, w: 21, size: 0.048, color: '#fff', weight: 800, align: 'left' as Align },
+          // Empilé + centré sous le prix : le montant ne peut plus chevaucher le libellé.
+          { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 66, y: 60.5, w: 28, h: 1.2, bg: '#ffffffcc', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
+          { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: remiseTxt, x: 60, y: 62, w: 40, size: fitSize(remiseTxt, 0.4, asp, 0.1, 1, 0.06), color: '#fff', weight: 900, align: 'center' as Align },
+          { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 60, y: 73.5, w: 40, size: 0.04, color: '#fff', weight: 800, align: 'center' as Align, track: 0.03 },
         ] : []),
         ...footEls(l, o),
       ];
@@ -451,9 +452,10 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       { ...B, id: 'euro', kind: 'text', text: '€', x: 60, y: 18.5, size: 0.052, color: DA.priceY, weight: 900, align: 'left' },
       { ...B, id: 'cents', kind: 'text', text: cents, x: 60, y: 27, size: 0.062, color: DA.priceY, weight: 900, align: 'left' },
       ...(remiseTxt ? [
-        { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 31, y: 41, w: 38, h: 0.5, bg: '#ffffffcc', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
-        { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: remiseTxt, x: 31, y: 43, size: 0.05, color: '#fff', weight: 900, align: 'left' as Align },
-        { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 45, y: 43.5, w: 26, size: 0.021, color: '#fff', weight: 800, align: 'left' as Align },
+        // Empilé + centré dans le cercle : montant au-dessus, libellé dessous (plus de chevauchement).
+        { ...B, id: 'pdiv', kind: 'box' as ElKind, x: 35, y: 40, w: 30, h: 0.5, bg: '#ffffffcc', size: 0, color: '#fff', weight: 400, align: 'left' as Align },
+        { ...B, id: 'remiseBig', kind: 'text' as ElKind, text: remiseTxt, x: 19, y: 42, w: 62, size: fitSize(remiseTxt, 0.62, asp, 0.055, 1, 0.032), color: '#fff', weight: 900, align: 'center' as Align },
+        { ...B, id: 'remiseSmall', kind: 'text' as ElKind, text: 'DE REMISE IMMÉDIATE', x: 19, y: 49.5, w: 62, size: 0.02, color: '#fff', weight: 800, align: 'center' as Align, track: 0.04 },
       ] : []),
       { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 56, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.03), color: '#21392B', weight: 800, align: 'center' },
       ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 70, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.037, 1, 0.024), color: DA.green, weight: 600, align: 'center' as Align }] : []),
