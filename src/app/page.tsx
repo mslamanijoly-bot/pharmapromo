@@ -640,28 +640,33 @@ function renderEl(e: El, H: number): CSSProperties {
 // Saisie de texte directement dans le bloc, sur l'étiquette (non contrôlé : pas de saut de curseur).
 function EditableText({ initial, onCommit, onCancel }: { initial: string; onCommit: (t: string) => void; onCancel: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Garde : Entrée/Échap valident PUIS démontent le champ, ce qui déclenche onBlur.
+  // Sans ce verrou, le onBlur re-commit (avec ref.current déjà nul) une valeur VIDE → le texte s'effaçait.
+  const done = useRef(false);
   useEffect(() => {
     const n = ref.current; if (!n) return;
     n.focus();
     const r = document.createRange(); r.selectNodeContents(n);
     const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r);
   }, []);
+  const commit = () => { if (done.current) return; done.current = true; onCommit(ref.current?.innerText ?? initial); };
+  const cancel = () => { if (done.current) return; done.current = true; onCancel(); };
   return (
     <div ref={ref} contentEditable suppressContentEditableWarning
       onPointerDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
       onKeyDown={e => {
         e.stopPropagation();
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onCommit(ref.current?.innerText || ''); }
-        else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
       }}
-      onBlur={() => onCommit(ref.current?.innerText || '')}
+      onBlur={commit}
       style={{ outline: '2px solid #16a34a', outlineOffset: 2, cursor: 'text', whiteSpace: 'pre-wrap', minWidth: 8 }}
     >{initial}</div>
   );
 }
 
-interface DragState { labelId: string; elId: string; offX: number; offY: number; box: HTMLElement; elW: number; elH: number; }
+interface DragState { labelId: string; elId: string; offX: number; offY: number; box: HTMLElement; elW: number; elH: number; startX: number; startY: number; active: boolean; }
 type Snap = { x: boolean; y: boolean };
 
 export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedEl, snap, onSelectLabel, onSelectEl, onDragStart, onDelEl, onAddText, editId, onStartEdit, onCommitText, onEndEdit, onDeleteLabel }: {
@@ -695,12 +700,15 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
         const isEd = editing && editId === e.id && editable;
         return (
           <div key={e.id}
+            title={editing && editable && !isEd ? 'Double-cliquez pour modifier le texte' : undefined}
+            onClick={editing && !isEd ? (ev) => ev.stopPropagation() : undefined}
             onPointerDown={(ev) => { if (editing && !isEd) { ev.stopPropagation(); onSelectEl(e.id); onDragStart(ev, label.id, e.id, e); } }}
             onDoubleClick={editing && editable ? (ev) => { ev.stopPropagation(); onStartEdit?.(e.id); } : undefined}
             style={{ ...renderEl(e, H), outline: sel && !isEd ? `1.5px solid ${selColor}` : 'none', outlineOffset: 2, cursor: editing ? (isEd ? 'text' : 'move') : 'default', userSelect: isEd ? 'text' : 'none', touchAction: 'none', pointerEvents: e.id === 'bgcover' ? 'none' : undefined }}>
             {isEd
               ? <EditableText initial={e.text || ''} onCommit={(t) => { onCommitText?.(e.id, t); onEndEdit?.(); }} onCancel={() => onEndEdit?.()} />
               : (e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} /> : (e.kind === 'box' ? null : e.text))}
+            {sel && !isEd && editable && onStartEdit && <button title="Modifier le texte" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onStartEdit(e.id); }} style={{ position: 'absolute', top: -10, left: -10, width: 18, height: 18, borderRadius: '50%', background: '#16a34a', color: '#fff', border: '2px solid #fff', fontSize: 10, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 6 }}>✎</button>}
             {sel && !isEd && <button title="Supprimer ce bloc" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onDelEl(e.id); }} style={{ position: 'absolute', top: -10, right: -10, width: 18, height: 18, borderRadius: '50%', background: '#ef4444', color: '#fff', border: '2px solid #fff', fontSize: 11, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>}
           </div>
         );
@@ -1426,13 +1434,17 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     const box = target.closest('[data-labelbox]') as HTMLElement; if (!box) return;
     const r = box.getBoundingClientRect(), er = target.getBoundingClientRect();
     // Taille du bloc en % de l'étiquette → permet d'aligner son CENTRE sur l'axe central.
-    drag.current = { labelId, elId, offX: ((ev.clientX - r.left) / r.width) * 100 - el.x, offY: ((ev.clientY - r.top) / r.height) * 100 - el.y, box, elW: (er.width / r.width) * 100, elH: (er.height / r.height) * 100 };
+    drag.current = { labelId, elId, offX: ((ev.clientX - r.left) / r.width) * 100 - el.x, offY: ((ev.clientY - r.top) / r.height) * 100 - el.y, box, elW: (er.width / r.width) * 100, elH: (er.height / r.height) * 100, startX: ev.clientX, startY: ev.clientY, active: false };
     target.setPointerCapture?.(ev.pointerId);
   };
   useEffect(() => {
     const SNAP = 1.5; // seuil d'aimantage (% de l'étiquette)
     const move = (ev: PointerEvent) => {
       const ds = drag.current; if (!ds) return; const r = ds.box.getBoundingClientRect();
+      // Seuil anti-clic : tant que le pointeur n'a pas franchi ~4 px, on ne bouge pas le bloc.
+      // → un simple clic / double-clic (avec micro-tremblement de souris ou tactile) reste un clic
+      //   et déclenche bien la sélection / l'édition au lieu de déplacer le prix par accident.
+      if (!ds.active) { if (Math.hypot(ev.clientX - ds.startX, ev.clientY - ds.startY) < 4) return; ds.active = true; }
       let nx = Math.max(-8, Math.min(99, ((ev.clientX - r.left) / r.width) * 100 - ds.offX));
       let ny = Math.max(-8, Math.min(99, ((ev.clientY - r.top) / r.height) * 100 - ds.offY));
       // Aimantage au centre : on aligne le centre du bloc sur 50 %. Shift = désactivé (placement libre).
