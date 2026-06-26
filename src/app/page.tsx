@@ -13,7 +13,7 @@ import { MM, pf, ff, fitSize, priceParts, parseTable, paginate, chunk, stackColu
 //  MODÈLE
 // ──────────────────────────────────────────────────────────────────────
 
-export type PromoType = 'prix-promo' | 'bon-reduction' | 'remise-lot' | 'multi-achat';
+export type PromoType = 'prix-promo' | 'bon-reduction' | 'remise-lot' | 'multi-achat' | 'remise-2eme';
 type Align = 'left' | 'center' | 'right';
 type ElKind = 'text' | 'pill' | 'box' | 'image';
 
@@ -88,6 +88,7 @@ const TYPES: { id: PromoType; label: string; icon: string; color: string }[] = [
   { id: 'bon-reduction', label: 'Bon de Réduction', icon: '✂️', color: '#15803d' },
   { id: 'remise-lot',    label: 'Remise Lot',       icon: '📦', color: '#c2410c' },
   { id: 'multi-achat',   label: 'Multi-Achat',      icon: '📊', color: '#6d28d9' },
+  { id: 'remise-2eme',   label: '2ᵉ à -X%',         icon: '➕', color: '#be123c' },
 ];
 
 const FONTS = [
@@ -233,6 +234,15 @@ function offiFooter(l: Label, o: SeedOpts): El[] {
   if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 86, y: 85, w: 10, size: 0, color: '#000', weight: 400, align: 'left' });
   return out;
 }
+// Offre « 2ᵉ produit à -X% » : à partir du prix unitaire et du pourcentage,
+// on calcule le prix des 2 (1 plein + 1 remisé). Textes prêts à afficher.
+function deux2(d: LabelData) {
+  const unit = pf(d.normalPrice);
+  const pct = Math.max(1, Math.min(99, parseInt((d.remiseManual || '').replace(/[^\d]/g, '')) || 50));
+  const lot2 = Math.round(unit * (2 - pct / 100) * 100) / 100; // plein + (-pct%)
+  return { unit, pct, lot2, unitTxt: `À L'UNITÉ ${ff(unit)} €`, lotTxt: `soit ${ff(lot2)} € le lot de 2` };
+}
+
 // Disque rouge « accroche » (le −%, le OFFERT…), centré, avec texte ajusté.
 function offiBurst(big: string, small: string | null, asp: number, y = 30, w = 48): El[] {
   const cx = 50 - w / 2, h = w * asp;
@@ -350,10 +360,26 @@ function officineMulti(l: Label, o: SeedOpts): El[] {
   return out;
 }
 
+function officine2eme(l: Label, o: SeedOpts): El[] {
+  const d = l.data, asp = o.aspect || 0.7;
+  const { pct, unitTxt, lotTxt } = deux2(d);
+  const out: El[] = [...offiHeader(d, asp),
+    { ...B, id: 'tag', kind: 'text', text: 'OFFRE 2ᵉ PRODUIT', x: 0, y: 13, w: 100, size: 0.032, color: OFFI.green, weight: 800, align: 'center', track: 0.1 },
+    { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 20, w: 90, size: fitSize(d.product, 0.9, asp, 0.05, 2, 0.032), color: OFFI.greenDark, weight: 900, align: 'center' },
+    { ...B, id: 'unitp', kind: 'text', text: unitTxt, x: 5, y: 31, w: 90, size: 0.026, color: OFFI.muted, weight: 700, align: 'center', track: 0.02 },
+  ];
+  // -X% = héros géant rouge (disque), sous-titre « SUR LE 2ᵉ ».
+  out.push(...offiBurst(`-${pct}%`, 'SUR LE 2ᵉ', asp, 36, 50));
+  out.push({ ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 6, y: 80, w: 88, size: 0.028, color: OFFI.green, weight: 700, align: 'center' });
+  out.push(...offiFooter(l, o));
+  return out;
+}
+
 function officineSeed(l: Label, o: SeedOpts): El[] {
   if (l.type === 'bon-reduction') return officineBon(l, o);
   if (l.type === 'remise-lot') return officineLot(l, o);
   if (l.type === 'multi-achat') return officineMulti(l, o);
+  if (l.type === 'remise-2eme') return officine2eme(l, o);
   return officinePrixPromo(l, o);
 }
 
@@ -390,6 +416,15 @@ function officineReglette(l: Label, o: SeedOpts): El[] {
     { ...B, id: 'cat', kind: 'text', text: d.category, x: 14, y: 10, w: 38, size: fitSize(d.category, 0.36, asp, 0.1, 1, 0.05), color: OFFI.white, weight: 800, align: 'left', track: 0.06 },
     { ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 33, w: 48, size: fitSize(d.product, 0.46, asp, 0.16, 3, 0.075), color: OFFI.white, weight: 900, align: 'left' },
   ];
+  // 2ᵉ produit à -X% : pourcentage en héros à droite (rouge), prix unité + lot.
+  if (l.type === 'remise-2eme') {
+    const { pct: p2, unitTxt, lotTxt } = deux2(d);
+    out.push({ ...B, id: 'tag', kind: 'text', text: '2ᵉ PRODUIT', x: 56, y: 9, w: 42, size: 0.07, color: OFFI.green, weight: 800, align: 'center', track: 0.06 });
+    out.push({ ...B, id: 'unitp', kind: 'text', text: unitTxt, x: 56, y: 26, w: 42, size: fitSize(unitTxt, 0.4, asp, 0.06, 1, 0.04), color: OFFI.muted, weight: 700, align: 'center' });
+    out.push({ ...B, id: 'pct', kind: 'text', text: `-${p2}%`, x: 55, y: 33, w: 44, size: fitSize(`-${p2}%`, 0.42, asp, 0.34, 1, 0.2), color: OFFI.promo, weight: 900, align: 'center' });
+    out.push({ ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 55, y: 82, w: 44, size: fitSize(lotTxt, 0.42, asp, 0.05, 1, 0.03), color: OFFI.green, weight: 600, align: 'center' });
+    return out;
+  }
   // Colonne droite, même ordre que les autres formats : tag · PRIX (héros) · au lieu de · remise.
   if (tag) out.push({ ...B, id: 'tag', kind: 'text', text: tag, x: 56, y: 7, w: 42, size: 0.07, color: OFFI.green, weight: 800, align: 'center', track: 0.1 });
   out.push(...offiPrice(priceVal, asp, 18, 0.31, 0.18, 54, 45));
@@ -435,6 +470,14 @@ function daCompact(l: Label, o: SeedOpts): El[] {
     out.push(...offiPrice(p, asp, 44, 0.22, 0.12, 0, 99, DA.red));
     return out;
   }
+  if (l.type === 'remise-2eme') {
+    const { pct: p2, lotTxt } = deux2(d);
+    out.push(product(13));
+    out.push({ ...B, id: 'pct', kind: 'text', text: `-${p2}%`, x: 0, y: 30, w: 100, size: fitSize(`-${p2}%`, 0.96, asp, 0.26, 1, 0.16), color: DA.red, weight: 900, align: 'center' });
+    out.push({ ...B, id: 'on2nd', kind: 'text', text: 'SUR LE 2ᵉ PRODUIT', x: 2, y: 66, w: 96, size: fitSize('SUR LE 2ᵉ PRODUIT', 0.9, asp, 0.045, 1, 0.028), color: DA.green, weight: 800, align: 'center', track: 0.03 });
+    out.push({ ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 2, y: 78, w: 96, size: fitSize(lotTxt, 0.9, asp, 0.034, 1, 0.022), color: DA.ink, weight: 600, align: 'center' });
+    return out;
+  }
   // ── PRIX PROMO (défaut) ──
   const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
   const manual = (d.remiseManual || '').trim();
@@ -464,6 +507,18 @@ function daReglette(l: Label, o: SeedOpts): El[] {
     { ...B, id: 'cat', kind: 'text', text: d.category, x: 14, y: 10, w: 38, size: fitSize(d.category, 0.36, asp, 0.1, 1, 0.05), color: '#fff', weight: 800, align: 'left', track: 0.06 },
     { ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 33, w: 48, size: fitSize(d.product, 0.46, asp, 0.16, 3, 0.05), color: '#fff', weight: 900, align: 'left' },
   ];
+  // 2ᵉ produit à -X% : cercle rouge à droite, pourcentage en héros (palette DA).
+  if (l.type === 'remise-2eme') {
+    const { pct: p2, unitTxt, lotTxt } = deux2(d);
+    const cbg = `radial-gradient(circle at 50% 50%, ${l.accent} 58%, ${DA.red2})`;
+    out.push({ ...B, id: 'circle', kind: 'box', shape: 'circle', x: 59, y: 4, w: 37, bg: cbg, size: 0, color: l.accent, weight: 400, align: 'left', shadow: true });
+    out.push({ ...B, id: 'unitp', kind: 'text', text: unitTxt, x: 59, y: 18, w: 37, size: fitSize(unitTxt, 0.3, asp, 0.05, 1, 0.03), color: '#fff', weight: 700, align: 'center', track: 0.02 });
+    out.push({ ...B, id: 'pct', kind: 'text', text: `-${p2}%`, x: 59, y: 26, w: 37, size: fitSize(`-${p2}%`, 0.32, asp, 0.28, 1, 0.18), color: DA.priceY, weight: 900, align: 'center' });
+    out.push({ ...B, id: 'on2nd', kind: 'text', text: 'SUR LE 2ᵉ PRODUIT', x: 58, y: 61, w: 39, size: fitSize('SUR LE 2ᵉ PRODUIT', 0.34, asp, 0.043, 1, 0.026), color: '#fff', weight: 800, align: 'center', track: 0.01 });
+    out.push({ ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 58, y: 72, w: 39, size: fitSize(lotTxt, 0.34, asp, 0.04, 1, 0.024), color: '#fff', weight: 600, align: 'center' });
+    if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 4, y: 82, w: 13, size: 0, color: '#000', weight: 400, align: 'left' });
+    return out;
+  }
   if (tag) out.push({ ...B, id: 'tag', kind: 'text', text: tag, x: 56, y: 7, w: 42, size: 0.07, color: DA.green, weight: 800, align: 'center', track: 0.1 });
   out.push(...offiPrice(priceVal, asp, 18, 0.31, 0.18, 54, 45, DA.red));
   if (oldTxt) out.push({ ...B, id: 'old', kind: 'text', text: oldTxt, x: 55, y: 53, w: 44, size: 0.085, color: '#9A8F6A', weight: 700, align: 'center', strike: true, strikeW: 0.04 });
@@ -567,6 +622,22 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       { ...B, id: 'subl', kind: 'text', text: `${paid} acheté${paid > 1 ? 's' : ''} + ${free} offert${free > 1 ? 's' : ''}`, x: 22, y: 44, w: 56, size: 0.03, color: '#fff', weight: 700, align: 'center' },
       { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 58, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.03), color: '#21392B', weight: 800, align: 'center' },
       ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 72, w: 88, size: 0.037, color: DA.green, weight: 600, align: 'center' as Align }] : []),
+    ];
+  }
+
+  // ===== 2ᵉ PRODUIT À -X% (DA « Homme de Fer ») =====
+  if (l.type === 'remise-2eme') {
+    const { pct, unitTxt, lotTxt } = deux2(d);
+    return [
+      ...frame,
+      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 15, y: 8.5, w: 70, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
+      { ...B, id: 'unitp', kind: 'text', text: unitTxt, x: 15, y: 15, w: 70, size: fitSize(unitTxt, 0.5, asp, 0.03, 1, 0.02), color: '#fff', weight: 700, align: 'center', track: 0.03 },
+      { ...B, id: 'pct', kind: 'text', text: `-${pct}%`, x: 17, y: 19.5, w: 66, size: fitSize(`-${pct}%`, 0.58, asp, 0.17, 1, 0.11), color: DA.priceY, weight: 900, align: 'center' },
+      { ...B, id: 'divline', kind: 'box', x: 33, y: 41.5, w: 34, h: 0.5, bg: 'rgba(255,255,255,0.65)', size: 0, color: '#fff', weight: 400, align: 'left' },
+      { ...B, id: 'on2nd', kind: 'text', text: 'SUR LE DEUXIÈME PRODUIT', x: 18, y: 43.5, w: 64, size: fitSize('SUR LE DEUXIÈME PRODUIT', 0.58, asp, 0.026, 2, 0.018), color: '#fff', weight: 800, align: 'center', track: 0.02 },
+      { ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 18, y: 52, w: 64, size: fitSize(lotTxt, 0.58, asp, 0.022, 1, 0.016), color: '#fff', weight: 600, align: 'center' },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 64, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.026), color: '#21392B', weight: 800, align: 'center' },
+      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 78, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: DA.green, weight: 600, align: 'center' as Align }] : []),
     ];
   }
 
@@ -888,6 +959,7 @@ function ContentForm({ l, set }: { l: Label; set: (k: keyof LabelData, v: string
   </>;
   else if (l.type === 'bon-reduction') middle = G(<PriceInp label="Valeur bon €" value={d.couponValue} onChange={v => set('couponValue', v)} />, <TextInp label="Validité" value={d.couponExpiry} onChange={v => set('couponExpiry', v)} />);
   else if (l.type === 'remise-lot') middle = <>{G(<TextInp label="Qté totale" value={d.lotQty} onChange={v => set('lotQty', v)} />, <TextInp label="Dont offert(s)" value={d.lotFree} onChange={v => set('lotFree', v)} />)}<PriceInp label="Prix du lot €" value={d.lotPrice} onChange={v => set('lotPrice', v)} />{(parseInt(d.lotFree) || 0) >= (parseInt(d.lotQty) || 0) && <Warn>⚠ Le nombre d&apos;offerts doit être inférieur à la quantité totale.</Warn>}</>;
+  else if (l.type === 'remise-2eme') { const r2 = deux2(d); middle = <>{G(<PriceInp label="Prix à l'unité €" value={d.normalPrice} onChange={v => set('normalPrice', v)} />, <TextInp label="Remise sur le 2ᵉ (%)" value={d.remiseManual} onChange={v => set('remiseManual', v.replace(/[^\d]/g, ''))} placeholder="60" />)}<div style={{ background: '#0d2137', border: '1px solid #1e3a5f', borderRadius: 5, padding: '7px 9px', fontSize: 12, color: '#38bdf8', marginBottom: 10 }}>🛒 2ᵉ produit à <strong>−{r2.pct}%</strong> · soit <strong>{ff(r2.lot2)} €</strong> le lot de 2</div></>; }
   else middle = <>{G(<TextInp label="P1 — qté" value={d.t1q} onChange={v => set('t1q', v)} />, <PriceInp label="P1 — prix" value={d.t1p} onChange={v => set('t1p', v)} />)}{G(<TextInp label="P2 — qté" value={d.t2q} onChange={v => set('t2q', v)} />, <PriceInp label="P2 — prix" value={d.t2p} onChange={v => set('t2p', v)} />)}{G(<TextInp label="P3 — qté" value={d.t3q} onChange={v => set('t3q', v)} />, <PriceInp label="P3 — prix" value={d.t3p} onChange={v => set('t3p', v)} />)}</>;
   return <>{cat}{prod}{middle}{qty}{dates}</>;
 }
@@ -973,6 +1045,9 @@ const IMPORT_FIELDS: Record<PromoType, ImpField[]> = {
     { key: 't1q', label: 'P1 qté', kw: /q.?1|qt[eé]?\s*1/i }, { key: 't1p', label: 'P1 prix', kw: /p.?1|prix\s*1/i },
     { key: 't2q', label: 'P2 qté', kw: /q.?2|qt[eé]?\s*2/i }, { key: 't2p', label: 'P2 prix', kw: /p.?2|prix\s*2/i },
     { key: 't3q', label: 'P3 qté', kw: /q.?3|qt[eé]?\s*3/i }, { key: 't3p', label: 'P3 prix', kw: /p.?3|prix\s*3/i }],
+  'remise-2eme': [F_CAT, F_PROD,
+    { key: 'normalPrice', label: "Prix à l'unité €", kw: /unit|prix|normal|public|vente|tarif/i },
+    { key: 'remiseManual', label: 'Remise 2ᵉ (%)', kw: /remise|%|pourcent|pct|deuxi|2e|second/i }, F_QTY],
 };
 
 // Modèles « parfaits » par type : en-têtes reconnus automatiquement + exemples.
@@ -1003,6 +1078,13 @@ const TEMPLATES: Record<PromoType, { headers: string[]; rows: string[][] }> = {
     headers: ['Catégorie', 'Produit', 'Qté 1', 'Prix 1', 'Qté 2', 'Prix 2', 'Qté 3', 'Prix 3', 'Format'],
     rows: [
       ['SOLAIRE', 'Spray solaire SPF50', '1', '12,90', '2', '22,90', '3', '29,90', 'Petite'],
+    ],
+  },
+  'remise-2eme': {
+    headers: ['Catégorie', 'Produit', "Prix à l'unité €", 'Remise 2ᵉ (%)', 'Descriptif', 'Format'],
+    rows: [
+      ['HYGIÈNE BUCCO-DENTAIRE', 'Bain de bouche LISTERINE', '6,50', '60', 'Flacon 500 ml', 'A4'],
+      ['DERMO-COSMÉTIQUE', 'Crème mains NEUTROGENA', '4,95', '50', 'Tube 75 ml', 'Vitrine'],
     ],
   },
 };
@@ -1151,6 +1233,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
     'bon-reduction': ['couponValue'],
     'remise-lot': ['lotPrice'],
     'multi-achat': ['t1p', 't2p', 't3p'],
+    'remise-2eme': ['normalPrice'],
   };
   // Lignes retenues = produit non vide + au moins un prix valide (le reste est ignoré).
   const prepared = body.map(r => {

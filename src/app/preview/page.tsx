@@ -3,7 +3,7 @@
    Cas piège volontaire : nom de produit long + litrage, et remise -3,99 €. */
 import { LabelView, optsFor, newLabel, FORMATS, type Project, type PromoType } from '../page';
 
-const TYPES: PromoType[] = ['prix-promo', 'bon-reduction', 'remise-lot', 'multi-achat'];
+const TYPES: PromoType[] = ['prix-promo', 'bon-reduction', 'remise-lot', 'multi-achat', 'remise-2eme'];
 const THEMES = ['promo', 'officine'] as const;
 
 const SAMPLE = {
