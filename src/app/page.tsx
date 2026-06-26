@@ -619,10 +619,11 @@ function renderEl(e: El, H: number): CSSProperties {
     if (e.shape === 'circle') { st.width = `${e.w}%`; st.aspectRatio = '1 / 1'; st.height = 'auto'; st.borderRadius = '50%'; st.background = e.bg; }
     else { st.height = `${e.h ?? 10}%`; st.background = e.bg; st.borderRadius = e.radius ? `${e.radius}px` : undefined; }
     if (e.border) st.border = e.border;
-    // Cercle promo : anneau clair en bordure interne (effet « arc ») + ombre douce, sans reflet.
+    // Rendu MAT (DA « Homme de Fer ») : pas de liseré blanc ni de reflet sur le cercle.
+    // Seulement une ombre portée très douce pour le détacher à l'écran (ignorée à l'impression).
     if (e.shadow) st.boxShadow = e.shape === 'circle'
-      ? 'inset 0 0 0 3px rgba(255,255,255,0.22), 0 8px 22px rgba(0,0,0,0.20)'
-      : '0 8px 22px rgba(0,0,0,0.20)';
+      ? '0 4px 14px rgba(0,0,0,0.14)'
+      : '0 4px 14px rgba(0,0,0,0.14)';
     st.fontSize = 0;
   } else st.fontSize = fs;
   if (e.kind === 'pill') {
@@ -645,7 +646,7 @@ function EditableText({ initial, onCommit, onCancel }: { initial: string; onComm
   const done = useRef(false);
   useEffect(() => {
     const n = ref.current; if (!n) return;
-    n.focus();
+    n.focus({ preventScroll: true }); // ne pas faire sauter la page/le canvas au focus
     const r = document.createRange(); r.selectNodeContents(n);
     const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r);
   }, []);
@@ -1363,7 +1364,9 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
 
   // ouvre le panneau d'édition sur mobile lors d'une sélection
   const pickLabel = (id: string | null) => { setSelLabel(id); setSelEl(null); if (id && isMobile) setPanelOpen(true); };
-  const pickEl = (id: string | null) => { setSelEl(id); if (id && isMobile) setPanelOpen(true); };
+  // Sélectionner un élément n'ouvre PAS le panneau du bas (mobile) : on garde l'étiquette
+  // visible pour pouvoir écrire directement dessus (le panneau recouvrirait l'étiquette).
+  const pickEl = (id: string | null) => { setSelEl(id); };
 
   // changement de dimensions : si l'orientation bascule, on remet les positions par défaut
   const setSize = (w: number, h: number) => setProject(p => {
@@ -1506,7 +1509,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
           {overflow && <div style={{ background: '#7c2d12', color: '#fed7aa', fontSize: 12, padding: '6px 16px' }}>⚠ {project.labels.length} étiquettes pour {L.capacity} emplacement(s) — réduisez la taille ou changez de format.</div>}
           <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? 8 : 28, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
             <div style={{ width: L.PW * scale, height: L.PH * scale, flexShrink: 0 }}>
-              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} snap={snap} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} editId={editId} startEdit={(id) => { pickEl(id); setEditId(id); }} commitText={(id, t) => patchElById(id, { text: t })} endEdit={() => setEditId(null)} deleteLabelId={deleteLabelById} />
+              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} snap={snap} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} editId={editId} startEdit={(id) => { setSelEl(id); setEditId(id); if (isMobile) setPanelOpen(false); }} commitText={(id, t) => patchElById(id, { text: t })} endEdit={() => setEditId(null)} deleteLabelId={deleteLabelById} />
             </div>
           </div>
         </main>
