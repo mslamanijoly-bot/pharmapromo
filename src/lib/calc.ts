@@ -51,13 +51,20 @@ export function priceParts(normalStr: string, promoStr: string) {
   return { promo, normal, intp, cents, remise, pct };
 }
 
-/** Nb de colonnes / lignes / étiquettes par feuille pour un tuilage. */
+/** Nb de colonnes / lignes / étiquettes par feuille pour un tuilage.
+ *  Capacité calculée « bord à bord » (max d'étiquettes), puis le gap demandé est
+ *  réparti dans l'espace restant et plafonné — ainsi deux étiquettes qui remplissent
+ *  pile la largeur (ex. 2×105 mm = A4) tiennent sur la même feuille au lieu d'être
+ *  séparées par un gap qui les ferait déborder. */
 export function paginate(lwMm: number, lhMm: number, paperWmm: number, paperHmm: number, marginMm: number, gapMm: number) {
   const usableW = paperWmm - 2 * marginMm;
   const usableH = paperHmm - 2 * marginMm;
-  const cols = Math.max(1, Math.floor((usableW + gapMm) / (lwMm + gapMm)));
-  const rows = Math.max(1, Math.floor((usableH + gapMm) / (lhMm + gapMm)));
-  return { cols, rows, perPage: cols * rows };
+  const cols = Math.max(1, Math.floor(usableW / lwMm));
+  const rows = Math.max(1, Math.floor(usableH / lhMm));
+  // Gap réel : espace restant réparti entre les étiquettes, sans dépasser le gap souhaité.
+  const gapX = cols > 1 ? Math.max(0, Math.min(gapMm, (usableW - cols * lwMm) / (cols - 1))) : 0;
+  const gapY = rows > 1 ? Math.max(0, Math.min(gapMm, (usableH - rows * lhMm) / (rows - 1))) : 0;
+  return { cols, rows, perPage: cols * rows, gapX, gapY };
 }
 
 /**

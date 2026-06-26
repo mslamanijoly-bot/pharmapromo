@@ -870,7 +870,7 @@ function Planche({ project, scale, editing, selLabel, selEl, snap, setSelLabel, 
 
 // Calcule la disposition d'impression : pages A4 (ou A5/A3), étiquettes à
 // taille réelle, tuilées selon la place, avec pagination explicite.
-interface PrintPage { wMm: number; hMm: number; gapMm: number; labels: Label[]; tiling: boolean }
+interface PrintPage { wMm: number; hMm: number; gapXmm: number; gapYmm: number; labels: Label[]; tiling: boolean }
 function printPlan(project: Project) {
   const paper = PAPERS[project.printPaper || 'A4'] || PAPERS.A4;
   const margin = project.printMarginMm ?? 0;
@@ -880,10 +880,10 @@ function printPlan(project: Project) {
   for (const l of labels) { const { w, h } = sizeOf(l, project); const k = `${w}x${h}`; if (!groups.has(k)) groups.set(k, { w, h, labels: [] }); groups.get(k)!.labels.push(l); }
   const pages: PrintPage[] = [];
   for (const g of groups.values()) {
-    const gapMm = g.labels.length > 1 ? GAP_MM : 0;
-    const { perPage } = paginate(g.w, g.h, paper.w, paper.h, margin, gapMm);
+    const desiredGap = g.labels.length > 1 ? GAP_MM : 0;
+    const { perPage, gapX, gapY } = paginate(g.w, g.h, paper.w, paper.h, margin, desiredGap);
     const tiling = g.labels.length > 1 || g.w < paper.w - 2 || g.h < paper.h - 2;
-    for (const part of chunk(g.labels, perPage)) pages.push({ wMm: g.w, hMm: g.h, gapMm, labels: part, tiling });
+    for (const part of chunk(g.labels, perPage)) pages.push({ wMm: g.w, hMm: g.h, gapXmm: gapX, gapYmm: gapY, labels: part, tiling });
   }
   const f0 = sizeOf(labels[0], project);
   const { cols, rows, perPage } = paginate(f0.w, f0.h, paper.w, paper.h, margin, labels.length > 1 ? GAP_MM : 0);
@@ -896,9 +896,9 @@ function PrintSheet({ project, screen }: { project: Project; screen?: boolean })
   return (
     <>
       {plan.pages.map((page, pi) => {
-        const lw = page.wMm * MM, lh = page.hMm * MM, g = page.gapMm * MM;
+        const lw = page.wMm * MM, lh = page.hMm * MM;
         return (
-          <div key={pi} style={{ width: plan.paper.w * MM, height: plan.paper.h * MM, boxSizing: 'border-box', padding: m, background: '#fff', breakAfter: pi < plan.pages.length - 1 ? 'page' : 'auto', pageBreakAfter: pi < plan.pages.length - 1 ? 'always' : 'auto', display: 'flex', flexWrap: 'wrap', alignContent: 'flex-start', gap: g, margin: screen ? '0 auto 14px' : 0, boxShadow: screen ? '0 6px 24px rgba(0,0,0,0.25)' : 'none', overflow: 'hidden' }}>
+          <div key={pi} style={{ width: plan.paper.w * MM, height: plan.paper.h * MM, boxSizing: 'border-box', padding: m, background: '#fff', breakAfter: pi < plan.pages.length - 1 ? 'page' : 'auto', pageBreakAfter: pi < plan.pages.length - 1 ? 'always' : 'auto', display: 'flex', flexWrap: 'wrap', alignContent: 'flex-start', gap: `${page.gapYmm * MM}px ${page.gapXmm * MM}px`, margin: screen ? '0 auto 14px' : 0, boxShadow: screen ? '0 6px 24px rgba(0,0,0,0.25)' : 'none', overflow: 'hidden' }}>
             {page.labels.map(l => (
               <div key={l.id} style={{ width: lw, height: lh, flexShrink: 0, outline: page.tiling ? '0.4px dashed rgba(0,0,0,0.35)' : 'none' }}>
                 <LabelView label={l} W={lw} H={lh} editing={false} opts={optsFor(l, project, false)} selectedLabel={false} selectedEl={null} onSelectLabel={() => {}} onSelectEl={() => {}} onDragStart={() => {}} onDelEl={() => {}} />
