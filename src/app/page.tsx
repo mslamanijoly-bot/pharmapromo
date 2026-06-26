@@ -564,12 +564,13 @@ function seedEls(l: Label, o: SeedOpts): El[] {
         { ...B, id: 'cat', kind: 'text', text: d.category, x: 3, y: 34, w: 54, size: fitSize(d.category, 0.5, asp, 0.072, 2, 0.04), color: '#fff', weight: 800, align: 'center' },
         { ...B, id: 'product', kind: 'text', text: d.product, x: 3, y: 51, w: 55, size: fitSize(d.product, 0.55, asp, 0.082, 2, 0.045), color: '#16231A', weight: 900, align: 'left' },
         ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 3, y: 71, w: 55, size: 0.058, color: DA.green, weight: 600, align: 'left' as Align }] : []),
-        { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 60, y: 4, w: 38, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-        ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 60, y: 12, w: 38, size: 0.075, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
-        // Prix « charme » en bloc, maximisé dans le cercle.
-        ...offiPrice(d.promoPrice, asp, 30, 0.36, 0.22, 60, 38, DA.priceY, 0.46),
+        // Cercle agrandi : occupe toute la hauteur de la réglette pour un impact maximal.
+        { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 59, y: 0, w: 40, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
+        ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 59, y: 8, w: 40, size: 0.08, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
+        // Prix « charme » en bloc, maximisé dans le cercle agrandi.
+        ...offiPrice(d.promoPrice, asp, 29, 0.42, 0.24, 59, 40, DA.priceY, 0.46),
         // Remise en blanc dans le bas du cercle (jamais confondue avec le prix jaune).
-        ...(remiseTxt ? [{ ...B, id: 'rem', kind: 'text' as ElKind, text: remiseTxt, x: 60, y: 77, w: 38, size: fitSize(remiseTxt, 0.34, asp, 0.075, 1, 0.045), color: '#fff', weight: 900, align: 'center' as Align }] : []),
+        ...(remiseTxt ? [{ ...B, id: 'rem', kind: 'text' as ElKind, text: remiseTxt, x: 59, y: 80, w: 40, size: fitSize(remiseTxt, 0.36, asp, 0.08, 1, 0.05), color: '#fff', weight: 900, align: 'center' as Align }] : []),
         ...footEls(l, o),
       ];
     }
@@ -577,15 +578,15 @@ function seedEls(l: Label, o: SeedOpts): El[] {
     return [
       { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 7, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
       { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 1.7, w: 100, size: fitSize(d.category, 0.96, asp, 0.027, 1, 0.016), color: '#fff', weight: 800, align: 'center' },
-      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 21, y: 9, w: 58, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 21, y: 14, w: 58, size: 0.028, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
-      // Prix de vente charme (euros gros + centimes/€), centré et agrandi pour remplir le cercle.
-      // Prix maximisé dans le cercle (centimes un peu plus compacts pour gagner en taille d'euros).
-      ...offiPrice(d.promoPrice, asp, 19, 0.21, 0.11, 22, 56, DA.priceY, 0.44),
+      // Cercle agrandi (héros maximal) — recentré horizontalement.
+      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 17, y: 8, w: 66, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
+      ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 17, y: 13, w: 66, size: 0.03, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
+      // Prix « charme » maximisé et centré dans le cercle agrandi.
+      ...offiPrice(d.promoPrice, asp, 20, 0.25, 0.12, 20, 60, DA.priceY, 0.44),
       // Remise = pastille rouge sous le cercle, jamais confondue avec le prix.
-      ...(remiseTxt ? offiSave(remiseTxt, asp, 27, 52, 46, 12, DA.red, '#fff') : []),
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 66, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.026), color: '#16231A', weight: 900, align: 'center' },
-      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 80, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: DA.green, weight: 600, align: 'center' as Align }] : []),
+      ...(remiseTxt ? offiSave(remiseTxt, asp, 27, 56, 46, 11, DA.red, '#fff') : []),
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 69, w: 90, size: fitSize(d.product, 0.9, asp, 0.05, 2, 0.026), color: '#16231A', weight: 900, align: 'center' },
+      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 80.5, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.028, 1, 0.02), color: DA.green, weight: 600, align: 'center' as Align }] : []),
       ...footEls(l, o),
     ];
   }
