@@ -358,7 +358,7 @@ function officineMulti(l: Label, o: SeedOpts): El[] {
     const cx = 7 + i * 29, best = i === 2;
     out.push({ ...B, id: `col${i}`, kind: 'box', x: cx, y: 36, w: 26, h: 26, bg: best ? OFFI.promo : OFFI.greenSoft, radius: 10, size: 0, color: best ? OFFI.promo : OFFI.greenSoft, weight: 400, align: 'left', shadow: best });
     out.push({ ...B, id: `q${i}`, kind: 'text', text: `${c.q} pce${parseInt(c.q) > 1 ? 's' : ''}`, x: cx, y: 39, w: 26, size: 0.028, color: best ? OFFI.white : OFFI.greenDark, weight: 800, align: 'center' });
-    out.push({ ...B, id: `p${i}`, kind: 'text', text: eur(c.p), x: cx, y: 49, w: 26, size: 0.05, color: best ? OFFI.white : OFFI.promo, weight: 900, align: 'center' });
+    out.push({ ...B, id: `p${i}`, kind: 'text', text: eur(c.p), x: cx - 1.5, y: 49, w: 29, size: fitSize(eur(c.p), 0.26, asp, 0.05, 1, 0.03), color: best ? OFFI.white : OFFI.promo, weight: 900, align: 'center' });
   });
   out.push({ ...B, id: 'mfoot', kind: 'text', text: 'Plus vous achetez, plus vous économisez', x: 6, y: 70, w: 88, size: 0.028, color: OFFI.green, weight: 700, align: 'center' });
   out.push(...offiFooter(l, o));
@@ -547,7 +547,7 @@ function seedEls(l: Label, o: SeedOpts): El[] {
   const asp = o.aspect || 0.7;
   // Aplat mat, centré : pas de point lumineux blanc, léger fondu vers le bord.
   const circleBg = `radial-gradient(circle at 50% 50%, ${a} 58%, ${DA.red2})`;
-  const { normal, intp, cents, remise, pct } = priceParts(d.normalPrice, d.promoPrice);
+  const { normal, remise, pct } = priceParts(d.normalPrice, d.promoPrice);
   // Remise affichée : € ou %, automatique ou saisie manuelle par l'utilisateur.
   const manual = (d.remiseManual || '').trim();
   const remiseTxt = d.remiseType === 'pct'
@@ -602,13 +602,13 @@ function seedEls(l: Label, o: SeedOpts): El[] {
   if (l.type === 'bon-reduction') {
     return [
       ...frame,
-      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 19, y: 10, w: 62, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      { ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 19, y: 16, w: 62, size: 0.03, color: '#fff', weight: 800, align: 'center', track: 0.04 },
-      // Valeur du bon = héros (prix charme jaune, adaptatif) centré dans le cercle.
-      ...offiPrice(d.couponValue, asp, 23, 0.17, 0.09, 19, 62, DA.priceY),
-      { ...B, id: 'bsub', kind: 'text', text: 'DE RÉDUCTION', x: 19, y: 45, w: 62, size: 0.03, color: '#fff', weight: 800, align: 'center', track: 0.08 },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 60, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.028), color: '#16231A', weight: 900, align: 'center' },
-      { ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 6, y: 74, w: 88, size: fitSize(`Valable jusqu'au ${d.couponExpiry}`, 0.88, asp, 0.035, 1, 0.022), color: DA.green, weight: 600, align: 'center' },
+      // Cercle harmonisé (même taille que prix-promo) + valeur du bon en bloc « charme ».
+      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 17, y: 8, w: 66, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
+      { ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 17, y: 14, w: 66, size: fitSize('BON DE RÉDUCTION', 0.62, asp, 0.03, 1, 0.02), color: '#fff', weight: 800, align: 'center', track: 0.03 },
+      ...offiPrice(d.couponValue, asp, 22, 0.2, 0.11, 20, 60, DA.priceY, 0.44),
+      { ...B, id: 'bsub', kind: 'text', text: 'DE RÉDUCTION', x: 17, y: 46, w: 66, size: 0.03, color: '#fff', weight: 800, align: 'center', track: 0.06 },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 69, w: 90, size: fitSize(d.product, 0.9, asp, 0.052, 2, 0.028), color: '#16231A', weight: 900, align: 'center' },
+      { ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 6, y: 80.5, w: 88, size: fitSize(`Valable jusqu'au ${d.couponExpiry}`, 0.88, asp, 0.035, 1, 0.022), color: DA.green, weight: 600, align: 'center' },
     ];
   }
 
@@ -617,17 +617,15 @@ function seedEls(l: Label, o: SeedOpts): El[] {
     const qty = Math.max(2, parseInt(d.lotQty) || 3);
     const free = Math.max(1, parseInt(d.lotFree) || 1);
     const paid = Math.max(1, qty - free);
-    const lp = pf(d.lotPrice);
     return [
       ...frame,
-      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 22, y: 10, w: 56, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      { ...B, id: 'lotn', kind: 'text', text: `LOT ×${qty}`, x: 24, y: 15, w: 52, size: 0.03, color: '#fff', weight: 800, align: 'center' },
-      { ...B, id: 'priceInt', kind: 'text', text: Math.floor(lp).toString(), x: 28, y: 20, size: 0.15, color: DA.priceY, weight: 900, align: 'left' },
-      { ...B, id: 'euro', kind: 'text', text: '€', x: 58, y: 21, size: 0.055, color: DA.priceY, weight: 900, align: 'left' },
-      { ...B, id: 'cents', kind: 'text', text: Math.round((lp - Math.floor(lp)) * 100).toString().padStart(2, '0'), x: 58, y: 29, size: 0.06, color: DA.priceY, weight: 900, align: 'left' },
-      { ...B, id: 'subl', kind: 'text', text: `${paid} acheté${paid > 1 ? 's' : ''} + ${free} offert${free > 1 ? 's' : ''}`, x: 22, y: 44, w: 56, size: 0.03, color: '#fff', weight: 700, align: 'center' },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 58, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.03), color: '#16231A', weight: 900, align: 'center' },
-      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 72, w: 88, size: 0.037, color: DA.green, weight: 600, align: 'center' as Align }] : []),
+      // Cercle harmonisé + prix du lot en bloc « charme » (fini le « 19 €98 » empilé).
+      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 17, y: 8, w: 66, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
+      { ...B, id: 'lotn', kind: 'text', text: `LOT ×${qty}`, x: 17, y: 14, w: 66, size: fitSize(`LOT ×${qty}`, 0.62, asp, 0.03, 1, 0.02), color: '#fff', weight: 800, align: 'center', track: 0.04 },
+      ...offiPrice(d.lotPrice, asp, 22, 0.2, 0.11, 20, 60, DA.priceY, 0.44),
+      { ...B, id: 'subl', kind: 'text', text: `${paid} acheté${paid > 1 ? 's' : ''} + ${free} offert${free > 1 ? 's' : ''}`, x: 17, y: 46, w: 66, size: 0.03, color: '#fff', weight: 700, align: 'center' },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 69, w: 90, size: fitSize(d.product, 0.9, asp, 0.052, 2, 0.03), color: '#16231A', weight: 900, align: 'center' },
+      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 80.5, w: 88, size: 0.034, color: DA.green, weight: 600, align: 'center' as Align }] : []),
     ];
   }
 
@@ -659,7 +657,8 @@ function seedEls(l: Label, o: SeedOpts): El[] {
     const cx = 6 + i * 30, best = i === 2;
     els.push({ ...B, id: `q${i}`, kind: 'box', x: cx, y: 34, w: 27, h: 30, bg: best ? DA.red : DA.band, size: 0, color: '#fff', weight: 400, align: 'center', radius: 12, shadow: best });
     els.push({ ...B, id: `qt${i}`, kind: 'text', text: `${c.q} pce${parseInt(c.q) > 1 ? 's' : ''}`, x: cx, y: 38.5, w: 27, size: 0.032, color: '#fff', weight: 800, align: 'center' });
-    els.push({ ...B, id: `p${i}`, kind: 'text', text: eur(c.p), x: cx, y: 48, w: 27, size: fitSize(eur(c.p), 0.27, asp, 0.062, 1, 0.035), color: best ? DA.priceY : '#fff', weight: 900, align: 'center' });
+    // Zone un peu plus large que la carte + taille prudente → le « € » ne passe jamais à la ligne.
+    els.push({ ...B, id: `p${i}`, kind: 'text', text: eur(c.p), x: cx - 1.5, y: 48, w: 30, size: fitSize(eur(c.p), 0.26, asp, 0.055, 1, 0.032), color: best ? DA.priceY : '#fff', weight: 900, align: 'center' });
   });
   els.push({ ...B, id: 'mfoot', kind: 'text', text: 'Plus vous achetez, plus vous économisez', x: 6, y: 70, w: 88, size: fitSize('Plus vous achetez, plus vous économisez', 0.88, asp, 0.034, 1, 0.022), color: DA.green, weight: 600, align: 'center' });
   return els;
