@@ -276,13 +276,13 @@ function offiSave(txt: string, asp: number, x: number, y: number, w: number, h: 
 // Prix « charme » Officine : euros GROS + centimes/€ plus petits (réduit la « douleur du prix »).
 // Astuce merchandising : on aligne la VIRGULE au centre de la zone → le prix reste optiquement
 // centré quel que soit le nombre de chiffres, et les centimes montent en exposant.
-function offiPrice(raw: string, asp: number, y: number, bigCap: number, floor: number, x0 = 0, w = 99, color = OFFI.promo): El[] {
+function offiPrice(raw: string, asp: number, y: number, bigCap: number, floor: number, x0 = 0, w = 99, color = OFFI.promo, centsRatio = 0.48): El[] {
   const promo = pf(raw);
   const intp = Math.floor(promo).toString();
   const cents = Math.round((promo - Math.floor(promo)) * 100).toString().padStart(2, '0');
-  const cx = x0 + w / 2; // position de la virgule = centre de la zone
+  const cx = x0 + w * 0.45; // virgule un peu avant le centre : plus de place à droite pour centimes + euro
   const big = fitSize(intp, (cx - x0) / 100, asp, bigCap, 1, floor);
-  const small = Math.round(big * 0.48 * 1000) / 1000; // centimes/€ plus gros → prix lu en un bloc
+  const small = Math.round(big * centsRatio * 1000) / 1000; // centimes ajustables, lus avec les euros
   return [
     { ...B, id: 'priceInt', kind: 'text', text: intp, x: x0, y, w: cx - x0, size: big, color, weight: 900, align: 'right' },
     { ...B, id: 'priceDec', kind: 'text', text: `,${cents} €`, x: cx, y, w: x0 + w - cx, size: small, color, weight: 900, align: 'left' },
@@ -566,8 +566,8 @@ function seedEls(l: Label, o: SeedOpts): El[] {
         ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 3, y: 71, w: 55, size: 0.058, color: DA.green, weight: 600, align: 'left' as Align }] : []),
         { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 60, y: 4, w: 38, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
         ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 60, y: 12, w: 38, size: 0.075, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
-        // Prix « charme » en bloc centré dans le cercle (lisible d'un coup d'œil).
-        ...offiPrice(d.promoPrice, asp, 33, 0.32, 0.2, 60, 38, DA.priceY),
+        // Prix « charme » en bloc, maximisé dans le cercle.
+        ...offiPrice(d.promoPrice, asp, 30, 0.36, 0.22, 60, 38, DA.priceY, 0.46),
         // Remise en blanc dans le bas du cercle (jamais confondue avec le prix jaune).
         ...(remiseTxt ? [{ ...B, id: 'rem', kind: 'text' as ElKind, text: remiseTxt, x: 60, y: 77, w: 38, size: fitSize(remiseTxt, 0.34, asp, 0.075, 1, 0.045), color: '#fff', weight: 900, align: 'center' as Align }] : []),
         ...footEls(l, o),
@@ -580,8 +580,8 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 21, y: 9, w: 58, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
       ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 21, y: 14, w: 58, size: 0.028, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
       // Prix de vente charme (euros gros + centimes/€), centré et agrandi pour remplir le cercle.
-      // Zone légèrement en retrait (24→76) pour que le « € » ne touche jamais le bord du cercle.
-      ...offiPrice(d.promoPrice, asp, 21, 0.18, 0.1, 24, 52, DA.priceY),
+      // Prix maximisé dans le cercle (centimes un peu plus compacts pour gagner en taille d'euros).
+      ...offiPrice(d.promoPrice, asp, 19, 0.21, 0.11, 22, 56, DA.priceY, 0.44),
       // Remise = pastille rouge sous le cercle, jamais confondue avec le prix.
       ...(remiseTxt ? offiSave(remiseTxt, asp, 27, 52, 46, 12, DA.red, '#fff') : []),
       { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 66, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.026), color: '#16231A', weight: 900, align: 'center' },
