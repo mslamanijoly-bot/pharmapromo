@@ -282,7 +282,7 @@ function offiPrice(raw: string, asp: number, y: number, bigCap: number, floor: n
   const cents = Math.round((promo - Math.floor(promo)) * 100).toString().padStart(2, '0');
   const cx = x0 + w / 2; // position de la virgule = centre de la zone
   const big = fitSize(intp, (cx - x0) / 100, asp, bigCap, 1, floor);
-  const small = Math.round(big * 0.42 * 1000) / 1000;
+  const small = Math.round(big * 0.48 * 1000) / 1000; // centimes/€ plus gros → prix lu en un bloc
   return [
     { ...B, id: 'priceInt', kind: 'text', text: intp, x: x0, y, w: cx - x0, size: big, color, weight: 900, align: 'right' },
     { ...B, id: 'priceDec', kind: 'text', text: `,${cents} €`, x: cx, y, w: x0 + w - cx, size: small, color, weight: 900, align: 'left' },
@@ -451,7 +451,7 @@ function daCompact(l: Label, o: SeedOpts): El[] {
     { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 10, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
     { ...B, id: 'cat', kind: 'text', text: d.category, x: 2, y: 2.6, w: 96, size: fitSize(d.category, 0.94, asp, 0.045, 1, 0.028), color: '#fff', weight: 800, align: 'center' },
   ];
-  const product = (y: number) => ({ ...B, id: 'product', kind: 'text' as ElKind, text: d.product, x: 4, y, w: 92, size: fitSize(d.product, 0.92, asp, 0.066, 2, 0.03), color: DA.green, weight: 900, align: 'center' as Align });
+  const product = (y: number) => ({ ...B, id: 'product', kind: 'text' as ElKind, text: d.product, x: 4, y, w: 92, size: fitSize(d.product, 0.92, asp, 0.066, 2, 0.03), color: '#16231A', weight: 900, align: 'center' as Align });
 
   if (l.type === 'bon-reduction') {
     out.push({ ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 2, y: 12, w: 96, size: fitSize('BON DE RÉDUCTION', 0.9, asp, 0.04, 1, 0.024), color: DA.green, weight: 800, align: 'center', track: 0.06 });
@@ -562,15 +562,14 @@ function seedEls(l: Label, o: SeedOpts): El[] {
         { ...B, id: 'promo', kind: 'text', text: 'PROMOTION', x: 3, y: 6, size: 0.17, color: DA.promo, weight: 900, align: 'left' },
         { ...B, id: 'band', kind: 'box', x: 3, y: 30, w: 54, h: 17, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left', radius: 4 },
         { ...B, id: 'cat', kind: 'text', text: d.category, x: 3, y: 34, w: 54, size: fitSize(d.category, 0.5, asp, 0.072, 2, 0.04), color: '#fff', weight: 800, align: 'center' },
-        { ...B, id: 'product', kind: 'text', text: d.product, x: 3, y: 51, w: 55, size: fitSize(d.product, 0.55, asp, 0.082, 2, 0.045), color: '#21392B', weight: 800, align: 'left' },
+        { ...B, id: 'product', kind: 'text', text: d.product, x: 3, y: 51, w: 55, size: fitSize(d.product, 0.55, asp, 0.082, 2, 0.045), color: '#16231A', weight: 900, align: 'left' },
         ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 3, y: 71, w: 55, size: 0.058, color: DA.green, weight: 600, align: 'left' as Align }] : []),
-        { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 60, y: 2, w: 42, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-        ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 61, y: 9, w: 38, size: 0.09, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
-        { ...B, id: 'priceInt', kind: 'text', text: intp, x: 66, y: 18, size: 0.42, color: DA.priceY, weight: 900, align: 'left' },
-        { ...B, id: 'euro', kind: 'text', text: '€', x: 85, y: 20.5, size: 0.135, color: DA.priceY, weight: 900, align: 'left' },
-        { ...B, id: 'cents', kind: 'text', text: cents, x: 85, y: 37, size: 0.15, color: DA.priceY, weight: 900, align: 'left' },
-        // Remise en pastille rouge distincte (plus jamais confondue avec le prix jaune).
-        ...(remiseTxt ? offiSave(remiseTxt, asp, 62, 62, 34, 13, DA.red, '#fff') : []),
+        { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 60, y: 4, w: 38, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
+        ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 60, y: 12, w: 38, size: 0.075, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
+        // Prix « charme » en bloc centré dans le cercle (lisible d'un coup d'œil).
+        ...offiPrice(d.promoPrice, asp, 33, 0.32, 0.2, 60, 38, DA.priceY),
+        // Remise en blanc dans le bas du cercle (jamais confondue avec le prix jaune).
+        ...(remiseTxt ? [{ ...B, id: 'rem', kind: 'text' as ElKind, text: remiseTxt, x: 60, y: 77, w: 38, size: fitSize(remiseTxt, 0.34, asp, 0.075, 1, 0.045), color: '#fff', weight: 900, align: 'center' as Align }] : []),
         ...footEls(l, o),
       ];
     }
@@ -579,12 +578,13 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 7, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
       { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 1.7, w: 100, size: fitSize(d.category, 0.96, asp, 0.027, 1, 0.016), color: '#fff', weight: 800, align: 'center' },
       { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 21, y: 9, w: 58, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 21, y: 13, w: 58, size: 0.026, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
-      // Prix de vente charme (euros gros + centimes/€) centré dans le cercle.
-      ...offiPrice(d.promoPrice, asp, 18, 0.155, 0.085, 21, 58, DA.priceY),
+      ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 21, y: 14, w: 58, size: 0.028, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
+      // Prix de vente charme (euros gros + centimes/€), centré et agrandi pour remplir le cercle.
+      // Zone légèrement en retrait (24→76) pour que le « € » ne touche jamais le bord du cercle.
+      ...offiPrice(d.promoPrice, asp, 21, 0.18, 0.1, 24, 52, DA.priceY),
       // Remise = pastille rouge sous le cercle, jamais confondue avec le prix.
       ...(remiseTxt ? offiSave(remiseTxt, asp, 27, 52, 46, 12, DA.red, '#fff') : []),
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 66, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.026), color: '#21392B', weight: 800, align: 'center' },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 66, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.026), color: '#16231A', weight: 900, align: 'center' },
       ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 80, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: DA.green, weight: 600, align: 'center' as Align }] : []),
       ...footEls(l, o),
     ];
@@ -606,7 +606,7 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       // Valeur du bon = héros (prix charme jaune, adaptatif) centré dans le cercle.
       ...offiPrice(d.couponValue, asp, 23, 0.17, 0.09, 19, 62, DA.priceY),
       { ...B, id: 'bsub', kind: 'text', text: 'DE RÉDUCTION', x: 19, y: 45, w: 62, size: 0.03, color: '#fff', weight: 800, align: 'center', track: 0.08 },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 60, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.028), color: '#21392B', weight: 800, align: 'center' },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 60, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.028), color: '#16231A', weight: 900, align: 'center' },
       { ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 6, y: 74, w: 88, size: fitSize(`Valable jusqu'au ${d.couponExpiry}`, 0.88, asp, 0.035, 1, 0.022), color: DA.green, weight: 600, align: 'center' },
     ];
   }
@@ -625,7 +625,7 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       { ...B, id: 'euro', kind: 'text', text: '€', x: 58, y: 21, size: 0.055, color: DA.priceY, weight: 900, align: 'left' },
       { ...B, id: 'cents', kind: 'text', text: Math.round((lp - Math.floor(lp)) * 100).toString().padStart(2, '0'), x: 58, y: 29, size: 0.06, color: DA.priceY, weight: 900, align: 'left' },
       { ...B, id: 'subl', kind: 'text', text: `${paid} acheté${paid > 1 ? 's' : ''} + ${free} offert${free > 1 ? 's' : ''}`, x: 22, y: 44, w: 56, size: 0.03, color: '#fff', weight: 700, align: 'center' },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 58, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.03), color: '#21392B', weight: 800, align: 'center' },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 58, w: 88, size: fitSize(d.product, 0.88, asp, 0.052, 2, 0.03), color: '#16231A', weight: 900, align: 'center' },
       ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 72, w: 88, size: 0.037, color: DA.green, weight: 600, align: 'center' as Align }] : []),
     ];
   }
@@ -641,7 +641,7 @@ function seedEls(l: Label, o: SeedOpts): El[] {
       { ...B, id: 'divline', kind: 'box', x: 33, y: 41.5, w: 34, h: 0.5, bg: 'rgba(255,255,255,0.65)', size: 0, color: '#fff', weight: 400, align: 'left' },
       { ...B, id: 'on2nd', kind: 'text', text: 'SUR LE DEUXIÈME PRODUIT', x: 18, y: 43.5, w: 64, size: fitSize('SUR LE DEUXIÈME PRODUIT', 0.58, asp, 0.026, 2, 0.018), color: '#fff', weight: 800, align: 'center', track: 0.02 },
       { ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 18, y: 52, w: 64, size: fitSize(lotTxt, 0.58, asp, 0.022, 1, 0.016), color: '#fff', weight: 600, align: 'center' },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 64, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.026), color: '#21392B', weight: 800, align: 'center' },
+      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 64, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.026), color: '#16231A', weight: 900, align: 'center' },
       ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 78, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: DA.green, weight: 600, align: 'center' as Align }] : []),
     ];
   }
@@ -764,7 +764,7 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
     <div data-labelbox onClick={(ev) => { ev.stopPropagation(); onSelectLabel(); }}
       onDoubleClick={editing && onAddText ? (ev) => { ev.stopPropagation(); const r = (ev.currentTarget as HTMLElement).getBoundingClientRect(); onAddText(Math.max(0, ((ev.clientX - r.left) / r.width) * 100 - 32), Math.max(0, ((ev.clientY - r.top) / r.height) * 100 - 2)); } : undefined}
       style={{ position: 'relative', width: W, height: H, background: bg, border: editing ? `1px solid ${selectedLabel ? selColor : 'rgba(0,0,0,0.08)'}` : 'none', borderRadius: editing ? 6 : 0, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${selColor}44` : 'none', flexShrink: 0, boxSizing: 'border-box' }}>
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.7, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.4, pointerEvents: 'none' }} />
       {/* Repères d'alignement : axes central vertical + horizontal (aide au centrage).
           Affichés sur l'étiquette sélectionnée ; mis en évidence (couleur) quand le bloc s'aimante au centre. */}
       {editing && selectedLabel && <>
