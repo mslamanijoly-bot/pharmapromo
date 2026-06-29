@@ -1156,28 +1156,70 @@ function detectHeader(rows: string[][]): boolean {
   return r.some(c => /produit|cat[eé]gorie|nom|prix|valeur|qt|descript|marque|libell|rayon/i.test(c));
 }
 const isNumericish = (s: string) => { const t = (s || '').trim(); return !!t && /^[\d\s.,€%+/-]+$/.test(t); };
+// Champs attendus NUMÉRIQUES (prix, quantités, %) — servent à valider le mappage par le contenu.
+const PRICE_KEYS = new Set(['normalPrice', 'promoPrice', 'couponValue', 'lotPrice', 'unitPrice', 'remiseManual', 'lotQty', 'lotFree', 't1p', 't2p', 't3p', 't1q', 't2q', 't3q']);
+// Statistiques par colonne : part de cellules numériques, longueur moyenne du texte, moyenne des nombres.
+function colStats(body: string[][], ncols: number) {
+  const st: { numRatio: number; avgLen: number; mean: number; nonEmpty: number }[] = [];
+  for (let c = 0; c < ncols; c++) {
+    let num = 0, lenSum = 0, valSum = 0, ne = 0, txt = 0;
+    for (const r of body) { const v = (r[c] || '').trim(); if (!v) continue; ne++; if (isNumericish(v)) { num++; valSum += pf(v); } else { txt++; lenSum += v.length; } }
+    st.push({ numRatio: ne ? num / ne : 0, avgLen: txt ? lenSum / txt : 0, mean: num ? valSum / num : 0, nonEmpty: ne });
+  }
+  return st;
+}
+// Mappage colonnes → champs, ROBUSTE : l'en-tête donne une 1ʳᵉ piste, puis on VALIDE par le
+// contenu (un prix doit être une colonne numérique, le produit une colonne texte) et on corrige
+// automatiquement les en-têtes trompeurs / décalés d'une colonne.
 function autoMap(fields: ImpField[], header: string[], hasHeader: boolean, body: string[][]): Record<string, number> {
   const ncols = Math.max(header.length, body.reduce((m, r) => Math.max(m, r.length), 0));
   const used = new Set<number>(); const map: Record<string, number> = {};
   fields.forEach(f => { map[f.key] = -1; });
-  // 1) correspondance par mot-clé sur les en-têtes (prioritaire et globale)
+  const fmtCol = new Set<number>(); if (hasHeader) header.forEach((h, i) => { if (FORMAT_KW.test(h)) fmtCol.add(i); });
+  // 1) correspondance par mot-clé sur les en-têtes (1ʳᵉ piste)
   if (hasHeader) fields.forEach(f => {
-    const col = header.findIndex((h, i) => !used.has(i) && f.kw.test(h));
+    const col = header.findIndex((h, i) => !used.has(i) && !fmtCol.has(i) && f.kw.test(h));
     if (col >= 0) { map[f.key] = col; used.add(col); }
   });
-  // 2) produit non trouvé : on prend la colonne la plus « texte » (noms longs, peu de chiffres)
-  if (map.product === -1 && fields.some(f => f.key === 'product')) {
-    let best = -1, bestScore = 3;
-    for (let c = 0; c < ncols; c++) {
-      if (used.has(c)) continue;
-      let sum = 0, n = 0;
-      for (const r of body) { const v = (r[c] || '').trim(); if (!v) continue; n++; sum += isNumericish(v) ? 0 : v.length; }
-      const avg = n ? sum / n : 0;
-      if (avg > bestScore) { bestScore = avg; best = c; }
+
+  const st = colStats(body, ncols);
+  const hasData = body.length >= 2 && st.some(s => s.nonEmpty > 0);
+  const isNum = (c: number) => c >= 0 && !!st[c] && st[c].numRatio >= 0.5 && !fmtCol.has(c);
+  const isTxt = (c: number) => c >= 0 && !!st[c] && st[c].numRatio < 0.4 && !fmtCol.has(c);
+  const release = (c: number) => { for (const k in map) if (map[k] === c) { used.delete(c); map[k] = -1; } };
+
+  if (hasData) {
+    // 2) PRODUIT = colonne la plus « texte ». Si l'en-tête l'a posé sur une colonne de nombres → on corrige.
+    if (fields.some(f => f.key === 'product')) {
+      const cur = map.product;
+      if (cur < 0 || st[cur].numRatio >= 0.4) {
+        let best = -1, bestLen = 2;
+        for (let c = 0; c < ncols; c++) { if (!isTxt(c)) continue; if (st[c].avgLen > bestLen) { bestLen = st[c].avgLen; best = c; } }
+        if (best >= 0) { release(best); if (cur >= 0) used.delete(cur); map.product = best; used.add(best); }
+      }
     }
-    if (best >= 0) { map.product = best; used.add(best); }
+    // 3) Champs PRIX = colonnes numériques. Si l'un d'eux pointe une colonne de texte → on réaffecte
+    //    les colonnes numériques disponibles, dans l'ordre (préserve l'ordre des paliers multi-achat).
+    const priceFields = fields.filter(f => PRICE_KEYS.has(f.key)).map(f => f.key);
+    if (priceFields.some(k => !isNum(map[k]))) {
+      const numCols: number[] = []; for (let c = 0; c < ncols; c++) if (isNum(c)) numCols.push(c);
+      priceFields.forEach(k => { if (map[k] >= 0) { used.delete(map[k]); map[k] = -1; } });
+      const avail = numCols.filter(c => !used.has(c));
+      priceFields.forEach((k, i) => { if (i < avail.length) { map[k] = avail[i]; used.add(avail[i]); } });
+    }
+    // 3b) Cohérence prix : le prix normal doit être ≥ au promo. Si les moyennes sont inversées
+    //     (en-têtes « normal/promo » échangés), on permute automatiquement.
+    if (map.normalPrice >= 0 && map.promoPrice >= 0 && map.normalPrice !== map.promoPrice && st[map.normalPrice].mean < st[map.promoPrice].mean) {
+      const t = map.normalPrice; map.normalPrice = map.promoPrice; map.promoPrice = t;
+    }
+    // 4) Champs texte secondaires non trouvés (ex. descriptif) → 1ʳᵉ colonne texte libre.
+    fields.filter(f => !PRICE_KEYS.has(f.key) && f.key !== 'product' && f.key !== 'category').forEach(f => {
+      if (map[f.key] >= 0) return;
+      for (let c = 0; c < ncols; c++) { if (used.has(c) || !isTxt(c)) continue; map[f.key] = c; used.add(c); break; }
+    });
   }
-  // 3) repli positionnel seulement si l'en-tête n'a quasi rien donné (fichiers bruts)
+
+  // 5) repli positionnel seulement si l'en-tête + le contenu n'ont quasi rien donné (fichiers bruts)
   if (Object.values(map).filter(v => v >= 0).length >= 2) return map;
   fields.forEach((f, idx) => { if (map[f.key] < 0 && idx < ncols && !used.has(idx)) { map[f.key] = idx; used.add(idx); } });
   return map;
