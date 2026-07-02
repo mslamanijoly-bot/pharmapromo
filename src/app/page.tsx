@@ -1035,6 +1035,22 @@ const F_CAT: ImpField = { key: 'category', label: 'Catégorie', kw: /cat|rayon|u
 const F_PROD: ImpField = { key: 'product', label: 'Produit', kw: /produit|nom|libell|d[eé]sign|article|d[eé]nom/i };
 const F_QTY: ImpField = { key: 'qtyLabel', label: 'Descriptif', kw: /descript|quantit|conditionn|contenance|g[eé]lul|capsul|comprim/i };
 const FORMAT_KW = /format|taille|gabarit|dimension|mod[eè]le|support/i;
+// Colonne « Type » : un seul Excel « tout-en-un » décrit toutes les promos, le type est
+// lu ligne par ligne (valeurs libres : « Prix promo », « Bon », « Lot », « Multi »,
+// « 2ᵉ produit »…). Repérée dans l'en-tête, elle est exclue du mappage des champs.
+const TYPE_KW = /\btype\b|nature|op[eé]ration/i;
+const PROMO_ALIASES: [RegExp, PromoType][] = [
+  [/bon|coupon|✂/i, 'bon-reduction'],
+  [/multi|palier|d[eè]s\b/i, 'multi-achat'],
+  [/2\s*[eè]|2ᵉ|deuxi|second/i, 'remise-2eme'],
+  [/lot|offert|gratuit|\+\s*\d/i, 'remise-lot'],
+  [/promo|prix|remise|r[eé]duction|net/i, 'prix-promo'],
+];
+const matchPromoType = (s: string): PromoType | null => {
+  const t = (s || '').trim(); if (!t) return null;
+  for (const [re, ty] of PROMO_ALIASES) if (re.test(t)) return ty;
+  return null;
+};
 const IMPORT_FIELDS: Record<PromoType, ImpField[]> = {
   'prix-promo': [F_CAT, F_PROD,
     { key: 'normalPrice', label: 'Prix normal €', kw: /normal|barr|public|ancien|avant|initial|vente|courant|fort/i },
@@ -1054,6 +1070,25 @@ const IMPORT_FIELDS: Record<PromoType, ImpField[]> = {
     { key: 'normalPrice', label: "Prix à l'unité €", kw: /unit|prix|normal|public|vente|tarif/i },
     { key: 'remiseManual', label: 'Remise 2ᵉ (%)', kw: /remise|%|pourcent|pct|deuxi|2e|second/i }, F_QTY],
 };
+
+// Mode « tout-en-un » : union NON AMBIGUË de toutes les colonnes possibles. Chaque ligne ne
+// remplit que celles utiles à son Type ; les autres restent vides (mots-clés d'en-tête pensés
+// pour qu'aucune colonne n'en capte une autre — ex. « lot » ≠ « prix », « unité » → prix normal).
+const AUTO_FIELDS: ImpField[] = [F_CAT, F_PROD,
+  { key: 'normalPrice', label: "Prix normal / à l'unité €", kw: /normal|barr|public|ancien|avant|initial|unit|fort/i },
+  { key: 'promoPrice', label: 'Prix promo €', kw: /promo|nouveau|apr[eè]s|r[eé]duit|net/i },
+  { key: 'couponValue', label: 'Valeur bon €', kw: /valeur|bon|montant/i },
+  { key: 'couponExpiry', label: 'Validité', kw: /validit|jusqu|expir/i },
+  { key: 'lotQty', label: 'Qté totale', kw: /total|nombre/i },
+  { key: 'lotFree', label: 'Offert(s)', kw: /offert|gratuit/i },
+  { key: 'lotPrice', label: 'Prix du lot €', kw: /lot/i },
+  { key: 't1q', label: 'Qté 1', kw: /q.?1|qt[eé]?\s*1/i }, { key: 't1p', label: 'Prix 1', kw: /p.?1|prix\s*1/i },
+  { key: 't2q', label: 'Qté 2', kw: /q.?2|qt[eé]?\s*2/i }, { key: 't2p', label: 'Prix 2', kw: /p.?2|prix\s*2/i },
+  { key: 't3q', label: 'Qté 3', kw: /q.?3|qt[eé]?\s*3/i }, { key: 't3p', label: 'Prix 3', kw: /p.?3|prix\s*3/i },
+  { key: 'remiseManual', label: 'Remise 2ᵉ (%)', kw: /remise|pourcent|pct|deuxi|second|%/i },
+  F_QTY];
+type ImpType = PromoType | 'auto';
+const getFields = (t: ImpType): ImpField[] => (t === 'auto' ? AUTO_FIELDS : IMPORT_FIELDS[t]);
 
 // Modèles « parfaits » par type : en-têtes reconnus automatiquement + exemples.
 const TEMPLATES: Record<PromoType, { headers: string[]; rows: string[][] }> = {
@@ -1093,6 +1128,19 @@ const TEMPLATES: Record<PromoType, { headers: string[]; rows: string[][] }> = {
     ],
   },
 };
+
+// Modèle « tout-en-un » : une seule feuille pour TOUTES les promos (1 ligne = 1 étiquette).
+// Le « Type » est lu ligne par ligne ; on ne remplit que les colonnes utiles à chaque ligne.
+const AUTO_TEMPLATE: { headers: string[]; rows: string[][] } = {
+  headers: ['Type', 'Catégorie', 'Produit', "Prix normal / à l'unité €", 'Prix promo €', 'Valeur bon €', 'Validité', 'Qté totale', 'Offert(s)', 'Prix du lot €', 'Qté 1', 'Prix 1', 'Qté 2', 'Prix 2', 'Qté 3', 'Prix 3', 'Remise 2ᵉ (%)', 'Descriptif', 'Format'],
+  rows: [
+    ['Prix promo', 'COMPLÉMENT ALIMENTAIRE', 'Chondro-Aid Fort ARKOPHARMA', '31,90', '26,90', '', '', '', '', '', '', '', '', '', '', '', '', 'Lot de 3 x 60 gélules', 'A4'],
+    ['Bon', 'HYGIÈNE', 'Dentifrice SENSODYNE', '', '', '2,00', '31/12/2026', '', '', '', '', '', '', '', '', '', '', '', 'Vitrine'],
+    ['Lot', 'SOLAIRE', 'Spray solaire SPF50+', '', '', '', '', '3', '1', '24,90', '', '', '', '', '', '', '', 'Lot de 3 sprays', 'Rayon'],
+    ['Multi', 'HYGIÈNE', 'Savon LE PETIT MARSEILLAIS', '', '', '', '', '', '', '', '1', '3,50', '3', '9,00', '5', '13,50', '', '', 'Petite'],
+    ['2ᵉ produit', 'DERMO-COSMÉTIQUE', 'Crème mains NEUTROGENA', '4,95', '', '', '', '', '', '', '', '', '', '', '', '', '50', 'Tube 75 ml', 'A4'],
+  ],
+};
 // Légende des formats acceptés dans la colonne « Format » de l'Excel.
 const FORMATS_LEGEND = FORMATS.map(f => `${f.name} (${f.w}×${f.h} mm)`).join(' · ');
 
@@ -1102,22 +1150,43 @@ function triggerDownload(blob: Blob, name: string) {
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
+
+const TEMPLATE_NUMERIC_HEADERS = new Set([
+  'Prix normal €', "Prix normal / à l'unité €", 'Prix promo €', 'Valeur bon €', 'Qté totale', 'Offert(s)', 'Prix du lot €',
+  'Qté 1', 'Prix 1', 'Qté 2', 'Prix 2', 'Qté 3', 'Prix 3', 'Remise 2ᵉ (%)',
+]);
+
+// La « Validité » reste du TEXTE (l'import la lit tel quel) : on évite ainsi le décalage d'un
+// jour qu'introduit la sérialisation des dates Excel selon le fuseau horaire.
+function toTemplateCell(header: string, cell: string) {
+  const value = (cell || '').trim();
+  if (TEMPLATE_NUMERIC_HEADERS.has(header)) {
+    const number = pf(value);
+    return { value: value ? number : '', type: value ? Number : String };
+  }
+  return { value, type: String };
+}
+
+const templateFor = (type: ImpType) => (type === 'auto' ? AUTO_TEMPLATE : TEMPLATES[type]);
+const templateLabel = (type: ImpType) => (type === 'auto' ? 'Tout-en-un' : (TYPES.find(t => t.id === type)?.label || 'Modèle'));
+
 // Modèle CSV (repli si l'écriture xlsx échoue).
-function templateCsv(type: PromoType): string {
-  const t = TEMPLATES[type];
+function templateCsv(type: ImpType): string {
+  const t = templateFor(type);
   const esc = (v: string) => /[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
   return '﻿' + [t.headers, ...t.rows].map(r => r.map(esc).join(';')).join('\r\n');
 }
+
 // Génère et télécharge le modèle en vrai .xlsx (repli .csv si besoin).
-async function downloadTemplate(type: PromoType) {
-  const t = TEMPLATES[type];
+async function downloadTemplate(type: ImpType) {
+  const t = templateFor(type);
   try {
     const mod = await import('write-excel-file/browser');
     const writeXlsx = mod.default as unknown as (data: unknown, opts: Record<string, unknown>) => { toBlob: () => Promise<Blob> };
-    const header = t.headers.map(h => ({ value: h, fontWeight: 'bold', align: 'center', backgroundColor: '#E7F2EC', color: '#0A5C3A' }));
-    const rows = t.rows.map(r => r.map(c => ({ value: c, type: String })));
+    const header = t.headers.map(h => ({ value: h, fontWeight: 'bold', align: 'center', backgroundColor: '#E7F2EC', color: '#0A5C3A', type: String }));
+    const rows = t.rows.map(r => r.map((c, i) => toTemplateCell(t.headers[i] || '', c)));
     const columns = t.headers.map(h => ({ width: Math.max(16, h.length + 4) }));
-    const sheet = (TYPES.find(x => x.id === type)?.label || 'Modèle').slice(0, 31);
+    const sheet = templateLabel(type).slice(0, 31);
     const blob = await writeXlsx([header, ...rows], { columns, sheet }).toBlob();
     triggerDownload(blob, `modele-pharmapromo-${type}.xlsx`);
   } catch {
@@ -1171,21 +1240,22 @@ function colStats(body: string[][], ncols: number) {
 // Mappage colonnes → champs, ROBUSTE : l'en-tête donne une 1ʳᵉ piste, puis on VALIDE par le
 // contenu (un prix doit être une colonne numérique, le produit une colonne texte) et on corrige
 // automatiquement les en-têtes trompeurs / décalés d'une colonne.
-function autoMap(fields: ImpField[], header: string[], hasHeader: boolean, body: string[][]): Record<string, number> {
+function autoMap(fields: ImpField[], header: string[], hasHeader: boolean, body: string[][], mixed = false): Record<string, number> {
   const ncols = Math.max(header.length, body.reduce((m, r) => Math.max(m, r.length), 0));
   const used = new Set<number>(); const map: Record<string, number> = {};
   fields.forEach(f => { map[f.key] = -1; });
-  const fmtCol = new Set<number>(); if (hasHeader) header.forEach((h, i) => { if (FORMAT_KW.test(h)) fmtCol.add(i); });
+  // Colonnes réservées (Format, Type) : jamais mappées à un champ.
+  const reserved = new Set<number>(); if (hasHeader) header.forEach((h, i) => { if (FORMAT_KW.test(h) || TYPE_KW.test(h)) reserved.add(i); });
   // 1) correspondance par mot-clé sur les en-têtes (1ʳᵉ piste)
   if (hasHeader) fields.forEach(f => {
-    const col = header.findIndex((h, i) => !used.has(i) && !fmtCol.has(i) && f.kw.test(h));
+    const col = header.findIndex((h, i) => !used.has(i) && !reserved.has(i) && f.kw.test(h));
     if (col >= 0) { map[f.key] = col; used.add(col); }
   });
 
   const st = colStats(body, ncols);
   const hasData = body.length >= 2 && st.some(s => s.nonEmpty > 0);
-  const isNum = (c: number) => c >= 0 && !!st[c] && st[c].numRatio >= 0.5 && !fmtCol.has(c);
-  const isTxt = (c: number) => c >= 0 && !!st[c] && st[c].numRatio < 0.4 && !fmtCol.has(c);
+  const isNum = (c: number) => c >= 0 && !!st[c] && st[c].numRatio >= 0.5 && !reserved.has(c);
+  const isTxt = (c: number) => c >= 0 && !!st[c] && st[c].numRatio < 0.4 && !reserved.has(c);
   const release = (c: number) => { for (const k in map) if (map[k] === c) { used.delete(c); map[k] = -1; } };
 
   if (hasData) {
@@ -1200,8 +1270,10 @@ function autoMap(fields: ImpField[], header: string[], hasHeader: boolean, body:
     }
     // 3) Champs PRIX = colonnes numériques. Si l'un d'eux pointe une colonne de texte → on réaffecte
     //    les colonnes numériques disponibles, dans l'ordre (préserve l'ordre des paliers multi-achat).
+    //    Ignoré en mode « tout-en-un » : les colonnes y sont volontairement creuses (un prix par
+    //    type de promo) et un réajustement/permutation par moyennes globales serait faux.
     const priceFields = fields.filter(f => PRICE_KEYS.has(f.key)).map(f => f.key);
-    if (priceFields.some(k => !isNum(map[k]))) {
+    if (!mixed && priceFields.some(k => !isNum(map[k]))) {
       const numCols: number[] = []; for (let c = 0; c < ncols; c++) if (isNum(c)) numCols.push(c);
       priceFields.forEach(k => { if (map[k] >= 0) { used.delete(map[k]); map[k] = -1; } });
       const avail = numCols.filter(c => !used.has(c));
@@ -1209,7 +1281,7 @@ function autoMap(fields: ImpField[], header: string[], hasHeader: boolean, body:
     }
     // 3b) Cohérence prix : le prix normal doit être ≥ au promo. Si les moyennes sont inversées
     //     (en-têtes « normal/promo » échangés), on permute automatiquement.
-    if (map.normalPrice >= 0 && map.promoPrice >= 0 && map.normalPrice !== map.promoPrice && st[map.normalPrice].mean < st[map.promoPrice].mean) {
+    if (!mixed && map.normalPrice >= 0 && map.promoPrice >= 0 && map.normalPrice !== map.promoPrice && st[map.normalPrice].mean < st[map.promoPrice].mean) {
       const t = map.normalPrice; map.normalPrice = map.promoPrice; map.promoPrice = t;
     }
     // 4) Champs texte secondaires non trouvés (ex. descriptif) → 1ʳᵉ colonne texte libre.
@@ -1226,24 +1298,25 @@ function autoMap(fields: ImpField[], header: string[], hasHeader: boolean, body:
 }
 
 // Mémorisation du mappage par « signature » de fichier (mêmes en-têtes = même fournisseur).
-const impMapKey = (header: string[], type: PromoType) => 'pp:impmap:' + type + '|' + header.map(h => (h || '').trim().toLowerCase()).join('§').slice(0, 200);
-function loadImportMap(header: string[], type: PromoType): { mapping: Record<string, number>; formatCol: number } | null {
+const impMapKey = (header: string[], type: ImpType) => 'pp:impmap:' + type + '|' + header.map(h => (h || '').trim().toLowerCase()).join('§').slice(0, 200);
+function loadImportMap(header: string[], type: ImpType): { mapping: Record<string, number>; formatCol: number; typeCol?: number } | null {
   try { const v = localStorage.getItem(impMapKey(header, type)); return v ? JSON.parse(v) : null; } catch { return null; }
 }
-function saveImportMap(header: string[], type: PromoType, mapping: Record<string, number>, formatCol: number) {
-  try { localStorage.setItem(impMapKey(header, type), JSON.stringify({ mapping, formatCol })); } catch { /* quota */ }
+function saveImportMap(header: string[], type: ImpType, mapping: Record<string, number>, formatCol: number, typeCol: number) {
+  try { localStorage.setItem(impMapKey(header, type), JSON.stringify({ mapping, formatCol, typeCol })); } catch { /* quota */ }
 }
 
 function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (labels: Label[]) => void }) {
-  const [type, setType] = useState<PromoType>('prix-promo');
+  const [type, setType] = useState<ImpType>('auto');
   const [rows, setRows] = useState<string[][]>([]);
   const [hasHeader, setHasHeader] = useState(true);
   const [mapping, setMapping] = useState<Record<string, number>>({});
   const [formatCol, setFormatCol] = useState(-1);
+  const [typeCol, setTypeCol] = useState(-1);
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
   const [fileName, setFileName] = useState('');
   const [error, setError] = useState('');
-  const fields = IMPORT_FIELDS[type];
+  const fields = getFields(type);
   const ncols = rows.reduce((m, r) => Math.max(m, r.length), 0);
 
   // (re)calcule le mappage auto à chaque changement de données / type / en-tête
@@ -1252,15 +1325,16 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
     if (!rows.length) return;
     const header = rows[0] || [];
     const saved = hasHeader ? loadImportMap(header, type) : null;
-    if (saved) { setMapping(saved.mapping); setFormatCol(saved.formatCol); setRemembered(true); }
+    if (saved) { setMapping(saved.mapping); setFormatCol(saved.formatCol); setTypeCol(saved.typeCol ?? (hasHeader ? header.findIndex(h => TYPE_KW.test(h)) : -1)); setRemembered(true); }
     else {
-      setMapping(autoMap(IMPORT_FIELDS[type], header, hasHeader, hasHeader ? rows.slice(1) : rows));
+      setMapping(autoMap(getFields(type), header, hasHeader, hasHeader ? rows.slice(1) : rows, type === 'auto'));
       setFormatCol(hasHeader ? header.findIndex(h => FORMAT_KW.test(h)) : -1);
+      setTypeCol(hasHeader ? header.findIndex(h => TYPE_KW.test(h)) : -1);
       setRemembered(false);
     }
     setExcluded(new Set()); // tout coché par défaut
   }, [rows, type, hasHeader]);
-  const resetMapping = () => { setMapping(autoMap(IMPORT_FIELDS[type], rows[0] || [], hasHeader, hasHeader ? rows.slice(1) : rows)); setFormatCol(hasHeader ? (rows[0] || []).findIndex(h => FORMAT_KW.test(h)) : -1); setRemembered(false); };
+  const resetMapping = () => { setMapping(autoMap(getFields(type), rows[0] || [], hasHeader, hasHeader ? rows.slice(1) : rows, type === 'auto')); setFormatCol(hasHeader ? (rows[0] || []).findIndex(h => FORMAT_KW.test(h)) : -1); setTypeCol(hasHeader ? (rows[0] || []).findIndex(h => TYPE_KW.test(h)) : -1); setRemembered(false); };
 
   // Empile les tableaux côte à côte en une seule liste, puis détecte l'en-tête.
   const loadRows = (rws: string[][]) => { const s = stackColumnBlocks(rws); setRows(s); setHasHeader(detectHeader(s)); setError(s.length ? '' : 'Aucune donnée détectée.'); };
@@ -1282,16 +1356,19 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
     'multi-achat': ['t1p', 't2p', 't3p'],
     'remise-2eme': ['normalPrice'],
   };
-  // Lignes retenues = produit non vide + au moins un prix valide (le reste est ignoré).
+  // Type de promo d'une ligne : lu dans la colonne « Type » (mode tout-en-un), sinon type global.
+  const rowTypeOf = (r: string[]): PromoType => type === 'auto' ? (matchPromoType(typeCol >= 0 ? (r[typeCol] || '') : '') || 'prix-promo') : type;
+  // Lignes retenues = produit non vide + au moins un prix valide pour SON type (le reste est ignoré).
   const prepared = body.map(r => {
+    const rt = rowTypeOf(r);
     const d: Partial<LabelData> = {};
     fields.forEach(f => { const c = mapping[f.key]; if (c >= 0 && r[c] != null && r[c] !== '') (d as Record<string, string>)[f.key] = r[c]; });
     if (!d.product) d.product = (mapping.product >= 0 ? r[mapping.product] : r[0]) || '';
     // Désignation pharmacie « Nom marque F/500ML » : si pas de descriptif fourni,
     // on détache le litrage/grammage pour l'afficher sur la petite ligne.
     if (!d.qtyLabel && d.product) { const sp = splitSize(d.product); if (sp.size) { d.product = sp.product; d.qtyLabel = sp.size; } }
-    return { d, r };
-  }).filter(({ d }) => (d.product || '').trim() && PRICE_KEYS[type].some(k => pf((d as Record<string, string>)[k] || '') > 0));
+    return { d, r, rt };
+  }).filter(({ d, rt }) => (d.product || '').trim() && PRICE_KEYS[rt].some(k => pf((d as Record<string, string>)[k] || '') > 0));
   const validCount = prepared.length;
   // Format dominant lu dans la colonne « Format » (taille de la planche).
   const fmtCounts: Record<string, number> = {};
@@ -1303,16 +1380,16 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
   const toggleAll = () => setExcluded(s => (s.size === 0 ? new Set(prepared.map((_, i) => i)) : new Set()));
   const build = () => {
     if (!selectedCount) { setError('Cochez au moins un produit à générer.'); return; }
-    if (hasHeader && rows[0]) saveImportMap(rows[0], type, mapping, formatCol); // mémorise pour ce fournisseur
-    const labels = selected.map(({ d, r }) => {
+    if (hasHeader && rows[0]) saveImportMap(rows[0], type, mapping, formatCol, typeCol); // mémorise pour ce fournisseur
+    const labels = selected.map(({ d, r, rt }) => {
       if (!d.category) d.category = 'PROMOTION';
       const f = formatCol >= 0 ? matchFormat(r[formatCol] || '') : null;
-      return newLabel(type, d, f ? { w: f.w, h: f.h } : undefined);
+      return newLabel(rt, d, f ? { w: f.w, h: f.h } : undefined);
     });
     onImport(labels);
   };
 
-  const example = 'Catégorie;Produit;Prix normal;Prix promo;Descriptif\nCOMPLÉMENT ALIMENTAIRE;Chondro-haid Fort ARKOPHARMA;31,90;26,90;Lot de 3 x 60 gélules*';
+  const example = "Type;Catégorie;Produit;Prix normal;Prix promo;Valeur bon;Descriptif;Format\nPrix promo;COMPLÉMENT ALIMENTAIRE;Chondro-Aid Fort;31,90;26,90;;Lot de 3 x 60 gélules;A4\nBon;HYGIÈNE;Dentifrice SENSODYNE;;;2,00;;Vitrine";
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SYS, padding: 16 }}>
@@ -1320,11 +1397,11 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
         <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Importer des produits</div>
         <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>Fichier <strong>.xlsx</strong> ou <strong>.csv</strong>, ou collez depuis Excel. Accents et colonnes gérés automatiquement — vous pouvez corriger le mappage.</div>
 
-        <div style={{ flex: '1 1 200px', marginBottom: 12 }}><label style={lbl}>Type d&apos;étiquette</label><select value={type} onChange={e => setType(e.target.value as PromoType)} style={{ ...inp, cursor: 'pointer' }}>{TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
+        <div style={{ flex: '1 1 200px', marginBottom: 12 }}><label style={lbl}>Type d&apos;étiquette</label><select value={type} onChange={e => setType(e.target.value as ImpType)} style={{ ...inp, cursor: 'pointer' }}><option value="auto">🧩 Tout-en-un — le type est lu ligne par ligne</option>{TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
 
         <div style={{ background: '#0c2a1c', border: '1px solid #166534', borderRadius: 8, padding: 12, marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: '#cbd5e1', marginBottom: 8 }}>① Récupérez le modèle prérempli, remplissez vos lignes, puis réimportez-le : les colonnes se mappent toutes seules.</div>
-          <button onClick={() => downloadTemplate(type)} style={{ width: '100%', padding: '11px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 14, fontWeight: 800 }}>⬇ Télécharger le modèle Excel — {TYPES.find(t => t.id === type)?.label}</button>
+          <div style={{ fontSize: 12, color: '#cbd5e1', marginBottom: 8 }}>① Récupérez le modèle prérempli, remplissez vos lignes, puis réimportez-le : les colonnes se mappent toutes seules.{type === 'auto' && ' Un seul fichier gère toutes vos promos — indiquez le Type de chaque ligne (Prix promo, Bon, Lot, Multi, 2ᵉ produit) et ne remplissez que les colonnes utiles.'}</div>
+          <button onClick={() => downloadTemplate(type)} style={{ width: '100%', padding: '11px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 14, fontWeight: 800 }}>⬇ Télécharger le modèle Excel — {templateLabel(type)}</button>
         </div>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
@@ -1358,6 +1435,15 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
                 </select>
               </div>
             ))}
+            {type === 'auto' && (
+              <div>
+                <label style={lbl}>Type de promo (par ligne)</label>
+                <select value={typeCol} onChange={e => setTypeCol(parseInt(e.target.value))} style={{ ...inp, cursor: 'pointer' }}>
+                  <option value={-1}>(aucune — tout en Prix Promo)</option>
+                  {Array.from({ length: ncols }).map((_, i) => <option key={i} value={i}>{colLabel(i)}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label style={lbl}>Format (taille d&apos;étiquette)</label>
               <select value={formatCol} onChange={e => setFormatCol(parseInt(e.target.value))} style={{ ...inp, cursor: 'pointer' }}>
@@ -1373,13 +1459,15 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
             {validCount > 0 && <button onClick={toggleAll} style={{ marginLeft: 'auto', marginBottom: 10, padding: '4px 10px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{excluded.size === 0 ? 'Tout décocher' : 'Tout cocher'}</button>}
           </div>
           <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #1e293b', borderRadius: 6, marginBottom: 14 }}>
-            {prepared.map(({ d, r }, i) => {
+            {prepared.map(({ d, r, rt }, i) => {
               const on = !excluded.has(i);
-              const price = (PRICE_KEYS[type].map(k => (d as Record<string, string>)[k]).find(v => v) || '');
+              const price = (PRICE_KEYS[rt].map(k => (d as Record<string, string>)[k]).find(v => v) || '');
               const fmt = formatCol >= 0 ? matchFormat(r[formatCol] || '') : null;
+              const rtInfo = TYPES.find(t => t.id === rt);
               return (
                 <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid #1e293b', cursor: 'pointer', background: on ? 'transparent' : '#0b1220', opacity: on ? 1 : 0.5 }}>
                   <input type="checkbox" checked={on} onChange={() => toggleRow(i)} />
+                  {type === 'auto' && rtInfo && <span title={rtInfo.label} style={{ fontSize: 10, fontWeight: 800, color: '#fff', background: rtInfo.color, borderRadius: 4, padding: '2px 5px', whiteSpace: 'nowrap' }}>{rtInfo.icon}</span>}
                   <span style={{ flex: 1, fontSize: 12, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.product}</span>
                   <span style={{ fontSize: 12, color: '#86efac', fontWeight: 700 }}>{price} €</span>
                   {fmt && <span style={{ fontSize: 10, color: '#64748b' }}>{fmt.name}</span>}
