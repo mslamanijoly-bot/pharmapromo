@@ -1129,16 +1129,45 @@ const TEMPLATES: Record<PromoType, { headers: string[]; rows: string[][] }> = {
   },
 };
 
-// Modèle « tout-en-un » : une seule feuille pour TOUTES les promos (1 ligne = 1 étiquette).
-// Le « Type » est lu ligne par ligne ; on ne remplit que les colonnes utiles à chaque ligne.
+// Modèle « tout-en-un » = jeu de test complet : une seule feuille pour TOUTES les promos
+// (1 ligne = 1 étiquette). Le « Type » est lu ligne par ligne ; chaque ligne ne remplit que
+// ses colonnes utiles. 25 produits · 20 catégories · les 5 types · les 5 formats → c'est le
+// fichier que le bouton « Télécharger » propose, prêt à réimporter pour tester la charte.
+const AUTO_HEADERS = ['Type', 'Catégorie', 'Produit', "Prix normal / à l'unité €", 'Prix promo €', 'Valeur bon €', 'Validité', 'Qté totale', 'Offert(s)', 'Prix du lot €', 'Qté 1', 'Prix 1', 'Qté 2', 'Prix 2', 'Qté 3', 'Prix 3', 'Remise 2ᵉ (%)', 'Descriptif', 'Format'];
+const _E = '';
+const _pp = (c: string, p: string, n: string, pr: string, d: string, f: string) => ['Prix promo', c, p, n, pr, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, d, f];
+const _bon = (c: string, p: string, v: string, val: string, f: string) => ['Bon', c, p, _E, _E, v, val, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, f];
+const _lot = (c: string, p: string, q: string, o: string, px: string, d: string, f: string) => ['Lot', c, p, _E, _E, _E, _E, q, o, px, _E, _E, _E, _E, _E, _E, _E, d, f];
+const _multi = (c: string, p: string, q1: string, p1: string, q2: string, p2: string, q3: string, p3: string, f: string) => ['Multi', c, p, _E, _E, _E, _E, _E, _E, _E, q1, p1, q2, p2, q3, p3, _E, _E, f];
+const _deux = (c: string, p: string, u: string, r: string, d: string, f: string) => ['2ᵉ produit', c, p, u, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, r, d, f];
 const AUTO_TEMPLATE: { headers: string[]; rows: string[][] } = {
-  headers: ['Type', 'Catégorie', 'Produit', "Prix normal / à l'unité €", 'Prix promo €', 'Valeur bon €', 'Validité', 'Qté totale', 'Offert(s)', 'Prix du lot €', 'Qté 1', 'Prix 1', 'Qté 2', 'Prix 2', 'Qté 3', 'Prix 3', 'Remise 2ᵉ (%)', 'Descriptif', 'Format'],
+  headers: AUTO_HEADERS,
   rows: [
-    ['Prix promo', 'COMPLÉMENT ALIMENTAIRE', 'Chondro-Aid Fort ARKOPHARMA', '31,90', '26,90', '', '', '', '', '', '', '', '', '', '', '', '', 'Lot de 3 x 60 gélules', 'A4'],
-    ['Bon', 'HYGIÈNE', 'Dentifrice SENSODYNE', '', '', '2,00', '31/12/2026', '', '', '', '', '', '', '', '', '', '', '', 'Vitrine'],
-    ['Lot', 'SOLAIRE', 'Spray solaire SPF50+', '', '', '', '', '3', '1', '24,90', '', '', '', '', '', '', '', 'Lot de 3 sprays', 'Rayon'],
-    ['Multi', 'HYGIÈNE', 'Savon LE PETIT MARSEILLAIS', '', '', '', '', '', '', '', '1', '3,50', '3', '9,00', '5', '13,50', '', '', 'Petite'],
-    ['2ᵉ produit', 'DERMO-COSMÉTIQUE', 'Crème mains NEUTROGENA', '4,95', '', '', '', '', '', '', '', '', '', '', '', '', '50', 'Tube 75 ml', 'A4'],
+    _pp('COMPLÉMENT ALIMENTAIRE', 'Chondro-Aid Fort ARKOPHARMA', '31,90', '26,90', 'Lot de 3 x 60 gélules', 'A4'),
+    _pp('SOIN VISAGE', 'Crème hydratante AVÈNE Hydrance', '19,90', '14,90', 'Tube 40 ml', 'Vitrine'),
+    _pp('HYGIÈNE BUCCO-DENTAIRE', 'Bain de bouche ELUDRIL', '8,50', '5,90', 'Flacon 500 ml', 'Rayon'),
+    _pp('CAPILLAIRE', 'Shampooing KLORANE Ortie', '9,90', '6,90', 'Flacon 400 ml', 'Petite'),
+    _pp('MINCEUR', 'Draineur ARKOFLUIDE Bio', '15,50', '11,90', 'Flacon 500 ml', 'Réglette'),
+    _pp('VITAMINES', 'Magnésium Marin BIANE', '13,20', '9,90', '60 comprimés', 'Rayon'),
+    _pp('DERMO-COSMÉTIQUE', 'Sérum La Roche-Posay Hyalu B5', '39,90', '31,90', 'Flacon 30 ml', 'A4'),
+    _pp('DIGESTION', 'Probiotiques LACTIBIANE Référence', '24,90', '18,90', '30 gélules', 'Vitrine'),
+    _pp('SOMMEIL', 'Mélatonine 1,9 mg NUTRISANTÉ', '12,90', '8,90', '30 comprimés', 'Petite'),
+    _bon('HYGIÈNE', 'Dentifrice SENSODYNE Répare & Protège', '2,00', '31/12/2026', 'Vitrine'),
+    _bon('BÉBÉ', 'Lingettes MUSTELA', '1,50', '30/09/2026', 'Rayon'),
+    _bon('VÉTÉRINAIRE', 'Antiparasitaire FRONTLINE Combo', '5,00', '15/11/2026', 'A4'),
+    _bon('SEVRAGE TABAGIQUE', 'Patchs NICORETTE 25 mg', '3,00', '31/12/2026', 'Vitrine'),
+    _lot('COMPLÉMENT ALIMENTAIRE', 'Magnésium B6 SANOFI', '3', '1', '19,98', 'Lot de 3 boîtes', 'A4'),
+    _lot('SOLAIRE', 'Spray solaire BIODERMA SPF50+', '2', '1', '24,90', 'Lot de 2 sprays', 'Réglette'),
+    _lot('CORPS', 'Gel douche SANEX Zéro%', '4', '2', '9,80', 'Lot de 4 flacons', 'Rayon'),
+    _lot('IMMUNITÉ', 'Vitamine C AZINC', '3', '1', '15,90', 'Lot de 3 tubes', 'Petite'),
+    _multi('SOLAIRE', 'Spray solaire GARNIER SPF50', '1', '12,90', '2', '22,90', '3', '29,90', 'Petite'),
+    _multi('HYGIÈNE', 'Savon de Marseille LE PETIT MARSEILLAIS', '1', '3,50', '3', '9,00', '5', '13,50', 'Rayon'),
+    _multi('NUTRITION SPORTIVE', 'Barre protéinée EAFIT', '1', '2,50', '3', '6,00', '6', '10,00', 'Réglette'),
+    _multi('YEUX', 'Sérum physiologique dosettes', '1', '3,90', '2', '6,90', '3', '8,90', 'Vitrine'),
+    _deux('DERMO-COSMÉTIQUE', 'Crème mains NEUTROGENA', '4,95', '50', 'Tube 75 ml', 'A4'),
+    _deux('HYGIÈNE BUCCO-DENTAIRE', 'Bain de bouche LISTERINE', '6,50', '60', 'Flacon 500 ml', 'Vitrine'),
+    _deux('CONTOUR DES YEUX', 'Soin anti-âge CAUDALIE Resvératrol', '32,00', '50', 'Pot 15 ml', 'Rayon'),
+    _deux('PIEDS', 'Crème anti-callosités AKILEÏNE', '8,90', '40', 'Tube 75 ml', 'Petite'),
   ],
 };
 // Légende des formats acceptés dans la colonne « Format » de l'Excel.
@@ -1169,6 +1198,7 @@ function toTemplateCell(header: string, cell: string) {
 
 const templateFor = (type: ImpType) => (type === 'auto' ? AUTO_TEMPLATE : TEMPLATES[type]);
 const templateLabel = (type: ImpType) => (type === 'auto' ? 'Tout-en-un' : (TYPES.find(t => t.id === type)?.label || 'Modèle'));
+const templateFileBase = (type: ImpType) => (type === 'auto' ? 'test-import-complet' : `modele-pharmapromo-${type}`);
 
 // Modèle CSV (repli si l'écriture xlsx échoue).
 function templateCsv(type: ImpType): string {
@@ -1188,9 +1218,9 @@ async function downloadTemplate(type: ImpType) {
     const columns = t.headers.map(h => ({ width: Math.max(16, h.length + 4) }));
     const sheet = templateLabel(type).slice(0, 31);
     const blob = await writeXlsx([header, ...rows], { columns, sheet }).toBlob();
-    triggerDownload(blob, `modele-pharmapromo-${type}.xlsx`);
+    triggerDownload(blob, `${templateFileBase(type)}.xlsx`);
   } catch {
-    triggerDownload(new Blob([templateCsv(type)], { type: 'text/csv;charset=utf-8' }), `modele-pharmapromo-${type}.csv`);
+    triggerDownload(new Blob([templateCsv(type)], { type: 'text/csv;charset=utf-8' }), `${templateFileBase(type)}.csv`);
   }
 }
 
@@ -1401,7 +1431,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
 
         <div style={{ background: '#0c2a1c', border: '1px solid #166534', borderRadius: 8, padding: 12, marginBottom: 14 }}>
           <div style={{ fontSize: 12, color: '#cbd5e1', marginBottom: 8 }}>① Récupérez le modèle prérempli, remplissez vos lignes, puis réimportez-le : les colonnes se mappent toutes seules.{type === 'auto' && ' Un seul fichier gère toutes vos promos — indiquez le Type de chaque ligne (Prix promo, Bon, Lot, Multi, 2ᵉ produit) et ne remplissez que les colonnes utiles.'}</div>
-          <button onClick={() => downloadTemplate(type)} style={{ width: '100%', padding: '11px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 14, fontWeight: 800 }}>⬇ Télécharger le modèle Excel — {templateLabel(type)}</button>
+          <button onClick={() => downloadTemplate(type)} style={{ width: '100%', padding: '11px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 14, fontWeight: 800 }}>{type === 'auto' ? '⬇ Télécharger le fichier de test — 25 produits (tout-en-un)' : `⬇ Télécharger le modèle Excel — ${templateLabel(type)}`}</button>
         </div>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
