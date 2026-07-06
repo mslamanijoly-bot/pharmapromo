@@ -23,7 +23,7 @@ interface El {
   size: number; font: string; color: string; bg?: string;
   weight: number; align: Align; rot: number;
   strike?: boolean; strikeW?: number; radius?: number; shape?: 'circle'; shadow?: boolean; border?: string;
-  track?: number; italic?: boolean;
+  track?: number; italic?: boolean; nowrap?: boolean;
   hidden?: boolean; removable?: boolean;
 }
 
@@ -301,16 +301,13 @@ function offiSave(txt: string, asp: number, x: number, y: number, w: number, h: 
 // Prix « charme » Officine : euros GROS + centimes/€ plus petits (réduit la « douleur du prix »).
 // Astuce merchandising : on aligne la VIRGULE au centre de la zone → le prix reste optiquement
 // centré quel que soit le nombre de chiffres, et les centimes montent en exposant.
-function offiPrice(raw: string, asp: number, y: number, bigCap: number, floor: number, x0 = 0, w = 99, color = OFFI.promo, centsRatio = 0.48): El[] {
-  const promo = pf(raw);
-  const intp = Math.floor(promo).toString();
-  const cents = Math.round((promo - Math.floor(promo)) * 100).toString().padStart(2, '0');
-  const cx = x0 + w * 0.45; // virgule un peu avant le centre : plus de place à droite pour centimes + euro
-  const big = fitSize(intp, (cx - x0) / 100, asp, bigCap, 1, floor);
-  const small = Math.round(big * centsRatio * 1000) / 1000; // centimes ajustables, lus avec les euros
+function offiPrice(raw: string, asp: number, y: number, bigCap: number, floor: number, x0 = 0, w = 99, color = OFFI.promo, _centsRatio = 0.48): El[] {
+  // Prix = UN SEUL element « 26,90 € », editable d'un bloc au double-clic (fini les deux moities
+  // dont l'une disparaissait a l'edition). Gros, gras, centre.
+  const txt = eur(raw);
+  const size = fitSize(txt, (w / 100) * 0.8, asp, bigCap, 1, floor); // marge 0.8 : « 26,90 € » sur UNE ligne
   return [
-    { ...B, id: 'priceInt', kind: 'text', text: intp, x: x0, y, w: cx - x0, size: big, color, weight: 900, align: 'right' },
-    { ...B, id: 'priceDec', kind: 'text', text: `,${cents} €`, x: cx, y, w: x0 + w - cx, size: small, color, weight: 900, align: 'left' },
+    { ...B, id: 'priceInt', kind: 'text', text: txt, x: x0, y, w, size, color, weight: 900, align: 'center', nowrap: true },
   ];
 }
 
@@ -716,7 +713,7 @@ function renderEl(e: El, H: number): CSSProperties {
     transform: e.rot ? `rotate(${e.rot}deg)` : undefined, transformOrigin: 'top left',
     fontFamily: e.font, fontWeight: e.weight, color: e.color, textAlign: e.align, lineHeight: 1.02,
     width: e.w != null ? `${e.w}%` : undefined,
-    whiteSpace: e.w != null ? 'normal' : 'nowrap',
+    whiteSpace: e.nowrap ? 'nowrap' : (e.w != null ? 'normal' : 'nowrap'),
     textDecoration: e.strike ? 'line-through' : undefined,
     // Trait du prix barré : épaisseur maîtrisée (sinon il hérite de la graisse et masque le prix).
     textDecorationThickness: e.strike ? `${Math.max(1, fs * (e.strikeW ?? 0.05))}px` : undefined,
@@ -798,12 +795,6 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
   const els = resolveEls(label, opts).filter(e => !e.hidden);
   const bg = label.bg;
   const selColor = label.accent;
-  // Le prix est composé de deux éléments (gros entier « 13 » + petits centimes « ,90 € »).
-  // On l'édite comme UN SEUL bloc « 13,90 € » : on montre la valeur combinée, et la validation
-  // est traitée par le parent (onCommitText) qui met à jour la DONNÉE prix (barré + remise recalculés).
-  const PRICE_PARTS = new Set(['priceInt', 'priceDec']);
-  const combinedPrice = () => `${els.find(e => e.id === 'priceInt')?.text || ''}${els.find(e => e.id === 'priceDec')?.text || ''}`.replace(/\s+/g, ' ').trim();
-  const editingPrice = editing && !!editId && PRICE_PARTS.has(editId);
   // Le double-clic sur le FOND n'ajoute plus de texte : il entrait en conflit avec le double-clic
   // « éditer un bloc » (rater l'élément de peu créait un bloc « Nouveau texte » parasite).
   // Pour ajouter du texte → bouton « ＋ Texte / Bloc de texte ».
@@ -818,8 +809,6 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
         <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 0, transform: 'translateY(-0.5px)', borderTop: `1px dashed ${snap?.y ? selColor : 'rgba(0,0,0,0.28)'}`, opacity: snap?.y ? 1 : 0.55, pointerEvents: 'none', zIndex: 5 }} />
       </>}
       {els.map(e => {
-        // Pendant l'édition du prix, on masque l'AUTRE moitié (sinon « 13,90 € » édité + « ,90 € » résiduel).
-        if (editingPrice && PRICE_PARTS.has(e.id) && e.id !== editId) return null;
         const sel = editing && selectedEl === e.id;
         const editable = e.kind === 'text' || e.kind === 'pill';
         const isEd = editing && editId === e.id && editable;
@@ -832,7 +821,7 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
             style={{ ...renderEl(e, H), outline: sel && !isEd ? `1.5px solid ${selColor}` : 'none', outlineOffset: 2, cursor: editing ? (isEd ? 'text' : 'move') : 'default', userSelect: isEd ? 'text' : 'none', touchAction: 'none', pointerEvents: e.id === 'bgcover' ? 'none' : undefined }}>
             {isEd
               ? <EditableText
-                  initial={PRICE_PARTS.has(e.id) ? combinedPrice() : (e.text || '')}
+                  initial={e.text || ''}
                   onCommit={(t) => { onCommitText?.(e.id, t); onEndEdit?.(); }}
                   onCancel={() => onEndEdit?.()} />
               : (e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} /> : (e.kind === 'box' ? null : e.text))}
