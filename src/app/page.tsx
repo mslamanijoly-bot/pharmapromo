@@ -804,9 +804,11 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
   const PRICE_PARTS = new Set(['priceInt', 'priceDec']);
   const combinedPrice = () => `${els.find(e => e.id === 'priceInt')?.text || ''}${els.find(e => e.id === 'priceDec')?.text || ''}`.replace(/\s+/g, ' ').trim();
   const editingPrice = editing && !!editId && PRICE_PARTS.has(editId);
+  // Le double-clic sur le FOND n'ajoute plus de texte : il entrait en conflit avec le double-clic
+  // « éditer un bloc » (rater l'élément de peu créait un bloc « Nouveau texte » parasite).
+  // Pour ajouter du texte → bouton « ＋ Texte / Bloc de texte ».
   return (
     <div data-labelbox onClick={(ev) => { ev.stopPropagation(); onSelectLabel(); }}
-      onDoubleClick={editing && onAddText ? (ev) => { ev.stopPropagation(); const r = (ev.currentTarget as HTMLElement).getBoundingClientRect(); onAddText(Math.max(0, ((ev.clientX - r.left) / r.width) * 100 - 32), Math.max(0, ((ev.clientY - r.top) / r.height) * 100 - 2)); } : undefined}
       style={{ position: 'relative', width: W, height: H, background: bg, border: editing ? `1px solid ${selectedLabel ? selColor : 'rgba(0,0,0,0.08)'}` : 'none', borderRadius: editing ? 6 : 0, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${selColor}44` : 'none', flexShrink: 0, boxSizing: 'border-box' }}>
       <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.4, pointerEvents: 'none' }} />
       {/* Repères d'alignement : axes central vertical + horizontal (aide au centrage).
