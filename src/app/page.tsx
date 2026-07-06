@@ -799,23 +799,10 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
   const bg = label.bg;
   const selColor = label.accent;
   // Le prix est composé de deux éléments (gros entier « 13 » + petits centimes « ,90 € »).
-  // Pour l'édition on le traite comme UN SEUL bloc : on édite « 13,90 € » d'un coup, puis on
-  // redécoupe à la validation. Sans ça, réécrire un seul des deux laissait des chiffres parasites.
+  // On l'édite comme UN SEUL bloc « 13,90 € » : on montre la valeur combinée, et la validation
+  // est traitée par le parent (onCommitText) qui met à jour la DONNÉE prix (barré + remise recalculés).
   const PRICE_PARTS = new Set(['priceInt', 'priceDec']);
   const combinedPrice = () => `${els.find(e => e.id === 'priceInt')?.text || ''}${els.find(e => e.id === 'priceDec')?.text || ''}`.replace(/\s+/g, ' ').trim();
-  const commitPrice = (t: string) => {
-    const raw = (t || '').trim();
-    const n = pf(raw);
-    if (n > 0 || /^0([.,]\d+)?\s*€?$/.test(raw)) { // saisie numérique → bel affichage entier + centimes
-      const intp = Math.floor(n).toString();
-      const cents = Math.round((n - Math.floor(n)) * 100).toString().padStart(2, '0');
-      onCommitText?.('priceInt', intp);
-      onCommitText?.('priceDec', `,${cents} €`);
-    } else { // texte libre (ex. « OFFERT ») → tout dans le 1ᵉʳ bloc, on vide le 2ᵉ
-      onCommitText?.('priceInt', raw);
-      onCommitText?.('priceDec', '');
-    }
-  };
   const editingPrice = editing && !!editId && PRICE_PARTS.has(editId);
   return (
     <div data-labelbox onClick={(ev) => { ev.stopPropagation(); onSelectLabel(); }}
@@ -844,7 +831,7 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
             {isEd
               ? <EditableText
                   initial={PRICE_PARTS.has(e.id) ? combinedPrice() : (e.text || '')}
-                  onCommit={(t) => { if (PRICE_PARTS.has(e.id)) commitPrice(t); else onCommitText?.(e.id, t); onEndEdit?.(); }}
+                  onCommit={(t) => { onCommitText?.(e.id, t); onEndEdit?.(); }}
                   onCancel={() => onEndEdit?.()} />
               : (e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} /> : (e.kind === 'box' ? null : e.text))}
             {sel && !isEd && editable && onStartEdit && <button title="Modifier le texte" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onStartEdit(e.id); }} style={{ position: 'absolute', top: -10, left: -10, width: 18, height: 18, borderRadius: '50%', background: '#16a34a', color: '#fff', border: '2px solid #fff', fontSize: 10, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 6 }}>✎</button>}
@@ -1692,8 +1679,34 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const overflow = project.labels.length > L.capacity;
 
   const updateLabel = useCallback((id: string, fn: (l: Label) => Label) => setProject(p => ({ ...p, labels: p.labels.map(l => l.id === id ? fn(l) : l) })), [setProject]);
-  const setData = (k: keyof LabelData, v: string) => { if (current) updateLabel(current.id, l => ({ ...l, data: { ...l.data, [k]: v } })); };
+  // ── Édition UNIFIÉE panneau ⇄ étiquette ──────────────────────────────────
+  // Les blocs « contenu » de l'étiquette sont pilotés par les DONNÉES. Réécrire un de ces blocs
+  // sur l'étiquette met à jour la donnée (et donc le panneau), et l'inverse aussi
+  // — fini la désynchro « le panneau dit X, l'étiquette dit Y ». Les autres blocs (badge remise,
+  // « LOT DE 3 », mentions, textes ajoutés) restent du texte libre (override).
+  const EL_TO_FIELD: Partial<Record<string, keyof LabelData>> = { product: 'product', cat: 'category', qty: 'qtyLabel' };
+  const FIELD_TO_ELS: Partial<Record<keyof LabelData, string[]>> = { product: ['product'], category: ['cat'], qtyLabel: ['qty'], promoPrice: ['priceInt', 'priceDec'], normalPrice: ['old'] };
+  const stripText = (overrides: Record<string, Partial<El>>, ids: string[]) => {
+    let ov = overrides;
+    for (const id of ids) if (ov[id] && 'text' in ov[id]) { const o = { ...ov[id] }; delete o.text; ov = { ...ov, [id]: o }; }
+    return ov;
+  };
+  const setData = (k: keyof LabelData, v: string) => { if (current) updateLabel(current.id, l => ({ ...l, data: { ...l.data, [k]: v }, overrides: stripText(l.overrides, FIELD_TO_ELS[k] || []) })); };
   const patchElById = (id: string, patch: Partial<El>) => { if (!current) return; updateLabel(current.id, l => isBound(l, id) ? { ...l, overrides: { ...l.overrides, [id]: { ...l.overrides[id], ...patch } } } : { ...l, extra: l.extra.map(e => e.id === id ? { ...e, ...patch } : e) }); };
+  // Réécriture d'un bloc SUR l'étiquette (double-clic) : routée vers la donnée si le bloc est du « contenu ».
+  const commitText = (id: string, t: string) => {
+    if (!current) return;
+    if (id === 'priceInt' || id === 'priceDec') { // prix édité en un bloc « 9,50 € »
+      const raw = (t || '').trim(); const n = pf(raw);
+      if (n > 0 || /^0([.,]\d+)?\s*€?$/.test(raw)) setData('promoPrice', ff(n)); // numérique → recalcule barré + remise
+      else { patchElById('priceInt', { text: raw }); patchElById('priceDec', { text: '' }); } // texte libre
+      return;
+    }
+    if (id === 'old') { const n = pf(t); if (n > 0) { setData('normalPrice', ff(n)); return; } }
+    const field = EL_TO_FIELD[id];
+    if (field) { setData(field, t); return; } // nom / catégorie / descriptif → donnée
+    patchElById(id, { text: t }); // badge, « LOT DE 3 », mentions, blocs ajoutés → texte libre
+  };
   const patchEl = (patch: Partial<El>) => { if (selEl) patchElById(selEl, patch); };
   // Supprimer un bloc : les blocs ajoutés sont retirés, les blocs du modèle sont masqués (réversible).
   const delEl = (id: string) => { if (!current) return; updateLabel(current.id, l => isBound(l, id) ? { ...l, overrides: { ...l.overrides, [id]: { ...l.overrides[id], hidden: true } } } : { ...l, extra: l.extra.filter(e => e.id !== id) }); if (selEl === id) setSelEl(null); };
@@ -1820,7 +1833,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
           {overflow && <div style={{ background: '#7c2d12', color: '#fed7aa', fontSize: 12, padding: '6px 16px' }}>⚠ {project.labels.length} étiquettes pour {L.capacity} emplacement(s) — réduisez la taille ou changez de format.</div>}
           <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? 8 : 28, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
             <div style={{ width: L.PW * scale, height: L.PH * scale, flexShrink: 0 }}>
-              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} snap={snap} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} editId={editId} startEdit={(id) => { setSelEl(id); setEditId(id); if (isMobile) setPanelOpen(false); }} commitText={(id, t) => patchElById(id, { text: t })} endEdit={() => setEditId(null)} deleteLabelId={deleteLabelById} />
+              <Planche project={project} scale={scale} editing={editing} selLabel={selLabel} selEl={selEl} snap={snap} setSelLabel={pickLabel} setSelEl={pickEl} onAdd={addLabel} dragStart={dragStart} delEl={delEl} addTextAt={(id, x, y) => addTextBlock(id, x, y)} editId={editId} startEdit={(id) => { setSelEl(id); setEditId(id); if (isMobile) setPanelOpen(false); }} commitText={commitText} endEdit={() => setEditId(null)} deleteLabelId={deleteLabelById} />
             </div>
           </div>
         </main>
