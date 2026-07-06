@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, CSSProperties } from 'react';
-import { MM, pf, ff, fitSize, priceParts, parseTable, paginate, chunk, stackColumnBlocks, splitSize } from '@/lib/calc';
+import { MM, pf, ff, fr, fitSize, priceParts, parseTable, paginate, chunk, stackColumnBlocks, splitSize } from '@/lib/calc';
 
 /* ════════════════════════════════════════════════════════════════════
    PHARMAPROMO STUDIO
@@ -136,6 +136,10 @@ const matchFormat = (s: string) => { const t = (s || '').trim(); return t ? FORM
 const LABEL_PRESETS = FORMATS.map(f => ({ name: `${f.name} — ${f.w}×${f.h}`, w: f.w, h: f.h }));
 
 const MARGIN_MM = 0, HEADER_MM = 0, GAP_MM = 3;
+// Marge d'impression MINIMALE : toutes les imprimantes ont une zone non-imprimable en
+// bord de feuille (~3-5 mm). Sans marge, la rangée du haut est collée au bord et le
+// bandeau catégorie se fait « manger ». On force donc au moins ce retrait à l'impression.
+const SAFE_PRINT_MM = 5;
 
 const SYS = FONTS[0].css;
 const DISCLAIMER = '*Non cumulable avec d’autres promotions en cours et dans la limite des stocks disponibles.';
@@ -156,6 +160,27 @@ const newData = (): LabelData => ({
   dateStart: '', dateEnd: '',
 });
 
+// « Lot » : deux mécaniques selon le nombre d'articles offerts.
+//  • Offert(s) ≥ 1 → pack avec article(s) gratuit(s) : « +N OFFERT », « X achetés + N offerts ».
+//  • Offert(s) = 0 → pack à prix fixe (« lot de 3 à 13,90 € ») : bandeau « LOT DE N », prix du lot,
+//    prix normal barré = prix à l'unité (d.normalPrice) × quantité, et l'économie réalisée.
+function lotView(d: LabelData) {
+  const qty = Math.max(2, parseInt(d.lotQty) || 3);
+  const fRaw = parseInt(d.lotFree);
+  const free = Number.isNaN(fRaw) ? 1 : Math.max(0, fRaw);
+  const isPack = free === 0;
+  const paid = Math.max(1, qty - free);
+  const unit = pf(d.normalPrice), lot = pf(d.lotPrice);
+  const oldTotal = unit > 0 ? Math.round(unit * qty * 100) / 100 : 0;
+  const save = oldTotal > lot ? Math.round((oldTotal - lot) * 100) / 100 : 0;
+  const pct = oldTotal > 0 && save > 0 ? Math.round((save / oldTotal) * 100) : 0;
+  const tag = isPack ? `LOT DE ${qty}` : 'LOT';
+  const disc = isPack ? (save > 0 ? `-${fr(save)}€` : '') : `+${free} OFFERT${free > 1 ? 'S' : ''}`;
+  const oldTxt = isPack && oldTotal > lot ? `${ff(oldTotal)} €` : '';
+  const mech = isPack ? `LE LOT : ${eur(d.lotPrice)}` : `${paid} acheté${paid > 1 ? 's' : ''} + ${free} offert${free > 1 ? 's' : ''}`;
+  return { qty, free, paid, isPack, unit, lot, oldTotal, save, pct, tag, disc, oldTxt, mech };
+}
+
 export function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelData>, size?: { w: number; h: number }): Label {
   return { id: uid(), type, accent: DA.red, bg: DA.bg, data: { ...newData(), ...data }, overrides: {}, extra: [], ...(size ? { wMm: size.w, hMm: size.h } : {}) };
 }
@@ -163,7 +188,7 @@ export function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelDat
 function defaultProject(): Project {
   return {
     pharmacy: 'Pharmacie Homme de Fer', plan: 'Plan promotionnel', logo: null, disclaimer: DISCLAIMER,
-    pageFormat: 'A4', labelWmm: 210, labelHmm: 297, printPaper: 'A4', printMarginMm: 0, theme: 'promo',
+    pageFormat: 'A4', labelWmm: 210, labelHmm: 297, printPaper: 'A4', printMarginMm: SAFE_PRINT_MM, theme: 'promo',
     labels: [newLabel('prix-promo', { category: 'COMPLÉMENT ALIMENTAIRE', product: 'Chondro-haid Fort ARKOPHARMA', qtyLabel: 'Lot de 3 x 60 gélules*', normalPrice: '31,90', promoPrice: '26,90' })],
   };
 }
@@ -174,7 +199,7 @@ function migrate(p: Project): Project {
   if (!q.labelWmm || !q.labelHmm) { q.labelWmm = 210; q.labelHmm = 297; }
   if (q.disclaimer == null) q.disclaimer = DISCLAIMER;
   if (!q.printPaper) q.printPaper = 'A4';
-  if (q.printMarginMm == null) q.printMarginMm = 0;
+  if (q.printMarginMm == null) q.printMarginMm = SAFE_PRINT_MM;
   // styles disponibles : « promo » (jaune) et « officine » (blanc + vert). Legacy → promo.
   if (q.theme === 'choc') q.theme = 'officine';
   if (!q.theme || q.theme === 'luxe' || q.theme === 'editorial' || q.theme === 'premium') q.theme = 'promo';
@@ -334,15 +359,21 @@ function officineBon(l: Label, o: SeedOpts): El[] {
 
 function officineLot(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 0.7;
-  const qty = Math.max(2, parseInt(d.lotQty) || 3), free = Math.max(1, parseInt(d.lotFree) || 1), paid = Math.max(1, qty - free);
+  const lv = lotView(d);
   const out: El[] = [...offiHeader(d, asp),
-    { ...B, id: 'ltag', kind: 'text', text: 'OFFRE LOT', x: 0, y: 13, w: 100, size: 0.032, color: OFFI.green, weight: 800, align: 'center', track: 0.12 },
+    { ...B, id: 'ltag', kind: 'text', text: lv.isPack ? `LOT DE ${lv.qty}` : 'OFFRE LOT', x: 0, y: 13, w: 100, size: 0.032, color: OFFI.green, weight: 800, align: 'center', track: 0.12 },
     { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 20, w: 90, size: fitSize(d.product, 0.9, asp, 0.05, 2, 0.032), color: OFFI.greenDark, weight: 900, align: 'center' },
   ];
-  // « +N OFFERT(S) » = héros géant rouge
-  out.push(...offiBurst(`+${free}`, `OFFERT${free > 1 ? 'S' : ''}`, asp, 32, 48));
-  out.push({ ...B, id: 'mech', kind: 'text', text: `${paid} acheté${paid > 1 ? 's' : ''} + ${free} offert${free > 1 ? 's' : ''}`, x: 6, y: 75, w: 88, size: 0.03, color: OFFI.greenDark, weight: 800, align: 'center' });
-  out.push({ ...B, id: 'lotPrice', kind: 'text', text: `LE LOT : ${eur(d.lotPrice)}`, x: 2, y: 80.5, w: 96, size: fitSize(`LE LOT : ${eur(d.lotPrice)}`, 0.9, asp, 0.05, 1, 0.03), color: OFFI.promo, weight: 900, align: 'center' });
+  if (lv.isPack) {
+    // Pack à prix fixe : le prix du lot en héros, prix normal barré + économie.
+    out.push(...offiBurst(eur(d.lotPrice), 'LE LOT', asp, 32, 48));
+    out.push({ ...B, id: 'mech', kind: 'text', text: lv.oldTxt ? `au lieu de ${lv.oldTxt}${lv.pct ? `  −${lv.pct}%` : ''}` : '', x: 6, y: 78, w: 88, size: 0.03, color: OFFI.greenDark, weight: 800, align: 'center' });
+  } else {
+    // « +N OFFERT(S) » = héros géant rouge
+    out.push(...offiBurst(`+${lv.free}`, `OFFERT${lv.free > 1 ? 'S' : ''}`, asp, 32, 48));
+    out.push({ ...B, id: 'mech', kind: 'text', text: lv.mech, x: 6, y: 75, w: 88, size: 0.03, color: OFFI.greenDark, weight: 800, align: 'center' });
+    out.push({ ...B, id: 'lotPrice', kind: 'text', text: `LE LOT : ${eur(d.lotPrice)}`, x: 2, y: 80.5, w: 96, size: fitSize(`LE LOT : ${eur(d.lotPrice)}`, 0.9, asp, 0.05, 1, 0.03), color: OFFI.promo, weight: 900, align: 'center' });
+  }
   out.push(...offiFooter(l, o));
   return out;
 }
@@ -412,7 +443,7 @@ function officineReglette(l: Label, o: SeedOpts): El[] {
   let priceVal = d.promoPrice, oldTxt = normal > pf(d.promoPrice) ? eur(d.normalPrice) : '', tag = '';
   let disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
   if (l.type === 'bon-reduction') { priceVal = d.couponValue; oldTxt = ''; disc = ''; tag = 'BON DE RÉDUCTION'; }
-  else if (l.type === 'remise-lot') { priceVal = d.lotPrice; oldTxt = ''; disc = `+${Math.max(1, parseInt(d.lotFree) || 1)} OFFERT`; tag = 'LOT'; }
+  else if (l.type === 'remise-lot') { const lv = lotView(d); priceVal = d.lotPrice; oldTxt = lv.oldTxt; disc = lv.disc; tag = lv.tag; }
   else if (l.type === 'multi-achat') { priceVal = d.t3p || d.t1p; oldTxt = ''; disc = ''; tag = 'MULTI-ACHAT'; }
   const out: El[] = [
     { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: OFFI.bg, size: 0, color: OFFI.bg, weight: 400, align: 'left' },
@@ -461,9 +492,9 @@ function daCompact(l: Label, o: SeedOpts): El[] {
     return out;
   }
   if (l.type === 'remise-lot') {
-    const free = Math.max(1, parseInt(d.lotFree) || 1);
+    const lv = lotView(d);
     out.push(product(13));
-    out.push(...offiSave(`+${free} OFFERT${free > 1 ? 'S' : ''}`, asp, 12, 34, 76, 22, DA.red, '#fff'));
+    out.push(...offiSave(lv.isPack ? `LOT DE ${lv.qty}` : `+${lv.free} OFFERT${lv.free > 1 ? 'S' : ''}`, asp, 12, 34, 76, 22, DA.red, '#fff'));
     out.push({ ...B, id: 'lotPrice', kind: 'text', text: `LE LOT : ${eur(d.lotPrice)}`, x: 2, y: 66, w: 96, size: fitSize(`LE LOT : ${eur(d.lotPrice)}`, 0.94, asp, 0.07, 1, 0.04), color: DA.red, weight: 900, align: 'center' });
     return out;
   }
@@ -503,7 +534,7 @@ function daReglette(l: Label, o: SeedOpts): El[] {
   let priceVal = d.promoPrice, oldTxt = normal > pf(d.promoPrice) ? eur(d.normalPrice) : '', tag = '';
   let disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
   if (l.type === 'bon-reduction') { priceVal = d.couponValue; oldTxt = ''; disc = ''; tag = 'BON DE RÉDUCTION'; }
-  else if (l.type === 'remise-lot') { priceVal = d.lotPrice; oldTxt = ''; disc = `+${Math.max(1, parseInt(d.lotFree) || 1)} OFFERT`; tag = 'LOT'; }
+  else if (l.type === 'remise-lot') { const lv = lotView(d); priceVal = d.lotPrice; oldTxt = lv.oldTxt; disc = lv.disc; tag = lv.tag; }
   else if (l.type === 'multi-achat') { priceVal = d.t3p || d.t1p; oldTxt = ''; disc = ''; tag = 'MULTI-ACHAT'; }
   const out: El[] = [
     { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: DA.bg, size: 0, color: DA.bg, weight: 400, align: 'left' },
@@ -614,16 +645,18 @@ function seedEls(l: Label, o: SeedOpts): El[] {
 
   // ===== REMISE LOT =====
   if (l.type === 'remise-lot') {
-    const qty = Math.max(2, parseInt(d.lotQty) || 3);
-    const free = Math.max(1, parseInt(d.lotFree) || 1);
-    const paid = Math.max(1, qty - free);
+    const lv = lotView(d);
+    const lotn = lv.isPack ? `LOT DE ${lv.qty}` : `LOT ×${lv.qty}`;
+    const subl = lv.isPack
+      ? (lv.oldTxt ? `au lieu de ${lv.oldTxt}${lv.pct ? `  −${lv.pct}%` : ''}` : 'LE LOT')
+      : `${lv.paid} acheté${lv.paid > 1 ? 's' : ''} + ${lv.free} offert${lv.free > 1 ? 's' : ''}`;
     return [
       ...frame,
       // Cercle harmonisé + prix du lot en bloc « charme » (fini le « 19 €98 » empilé).
       { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 17, y: 8, w: 66, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      { ...B, id: 'lotn', kind: 'text', text: `LOT ×${qty}`, x: 17, y: 14, w: 66, size: fitSize(`LOT ×${qty}`, 0.62, asp, 0.03, 1, 0.02), color: '#fff', weight: 800, align: 'center', track: 0.04 },
+      { ...B, id: 'lotn', kind: 'text', text: lotn, x: 17, y: 14, w: 66, size: fitSize(lotn, 0.62, asp, 0.03, 1, 0.02), color: '#fff', weight: 800, align: 'center', track: 0.04 },
       ...offiPrice(d.lotPrice, asp, 22, 0.2, 0.11, 20, 60, DA.priceY, 0.44),
-      { ...B, id: 'subl', kind: 'text', text: `${paid} acheté${paid > 1 ? 's' : ''} + ${free} offert${free > 1 ? 's' : ''}`, x: 17, y: 46, w: 66, size: 0.03, color: '#fff', weight: 700, align: 'center' },
+      { ...B, id: 'subl', kind: 'text', text: subl, x: 17, y: 46, w: 66, size: 0.03, color: '#fff', weight: 700, align: 'center' },
       { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 69, w: 90, size: fitSize(d.product, 0.9, asp, 0.052, 2, 0.03), color: '#16231A', weight: 900, align: 'center' },
       ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 80.5, w: 88, size: 0.034, color: DA.green, weight: 600, align: 'center' as Align }] : []),
     ];
@@ -720,13 +753,18 @@ function EditableText({ initial, onCommit, onCancel }: { initial: string; onComm
   // Garde : Entrée/Échap valident PUIS démontent le champ, ce qui déclenche onBlur.
   // Sans ce verrou, le onBlur re-commit (avec ref.current déjà nul) une valeur VIDE → le texte s'effaçait.
   const done = useRef(false);
+  // Le contenu est fixé UNE fois, impérativement (pas d'enfant JSX). Ainsi un re-rendu du parent
+  // — typiquement la sauvegarde auto toutes les 700 ms — ne peut PAS réécrire ce que l'on tape :
+  // c'est ce qui faisait « réapparaître des chiffres au hasard » pendant la saisie.
+  const init = useRef(initial);
   useEffect(() => {
     const n = ref.current; if (!n) return;
+    n.textContent = init.current;
     n.focus({ preventScroll: true }); // ne pas faire sauter la page/le canvas au focus
     const r = document.createRange(); r.selectNodeContents(n);
     const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r);
   }, []);
-  const commit = () => { if (done.current) return; done.current = true; onCommit(ref.current?.innerText ?? initial); };
+  const commit = () => { if (done.current) return; done.current = true; onCommit(ref.current?.innerText ?? init.current); };
   const cancel = () => { if (done.current) return; done.current = true; onCancel(); };
   return (
     <div ref={ref} contentEditable suppressContentEditableWarning
@@ -739,7 +777,7 @@ function EditableText({ initial, onCommit, onCancel }: { initial: string; onComm
       }}
       onBlur={commit}
       style={{ outline: '2px solid #16a34a', outlineOffset: 2, cursor: 'text', whiteSpace: 'pre-wrap', minWidth: 8 }}
-    >{initial}</div>
+    />
   );
 }
 
@@ -760,6 +798,25 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
   const els = resolveEls(label, opts).filter(e => !e.hidden);
   const bg = label.bg;
   const selColor = label.accent;
+  // Le prix est composé de deux éléments (gros entier « 13 » + petits centimes « ,90 € »).
+  // Pour l'édition on le traite comme UN SEUL bloc : on édite « 13,90 € » d'un coup, puis on
+  // redécoupe à la validation. Sans ça, réécrire un seul des deux laissait des chiffres parasites.
+  const PRICE_PARTS = new Set(['priceInt', 'priceDec']);
+  const combinedPrice = () => `${els.find(e => e.id === 'priceInt')?.text || ''}${els.find(e => e.id === 'priceDec')?.text || ''}`.replace(/\s+/g, ' ').trim();
+  const commitPrice = (t: string) => {
+    const raw = (t || '').trim();
+    const n = pf(raw);
+    if (n > 0 || /^0([.,]\d+)?\s*€?$/.test(raw)) { // saisie numérique → bel affichage entier + centimes
+      const intp = Math.floor(n).toString();
+      const cents = Math.round((n - Math.floor(n)) * 100).toString().padStart(2, '0');
+      onCommitText?.('priceInt', intp);
+      onCommitText?.('priceDec', `,${cents} €`);
+    } else { // texte libre (ex. « OFFERT ») → tout dans le 1ᵉʳ bloc, on vide le 2ᵉ
+      onCommitText?.('priceInt', raw);
+      onCommitText?.('priceDec', '');
+    }
+  };
+  const editingPrice = editing && !!editId && PRICE_PARTS.has(editId);
   return (
     <div data-labelbox onClick={(ev) => { ev.stopPropagation(); onSelectLabel(); }}
       onDoubleClick={editing && onAddText ? (ev) => { ev.stopPropagation(); const r = (ev.currentTarget as HTMLElement).getBoundingClientRect(); onAddText(Math.max(0, ((ev.clientX - r.left) / r.width) * 100 - 32), Math.max(0, ((ev.clientY - r.top) / r.height) * 100 - 2)); } : undefined}
@@ -772,6 +829,8 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
         <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 0, transform: 'translateY(-0.5px)', borderTop: `1px dashed ${snap?.y ? selColor : 'rgba(0,0,0,0.28)'}`, opacity: snap?.y ? 1 : 0.55, pointerEvents: 'none', zIndex: 5 }} />
       </>}
       {els.map(e => {
+        // Pendant l'édition du prix, on masque l'AUTRE moitié (sinon « 13,90 € » édité + « ,90 € » résiduel).
+        if (editingPrice && PRICE_PARTS.has(e.id) && e.id !== editId) return null;
         const sel = editing && selectedEl === e.id;
         const editable = e.kind === 'text' || e.kind === 'pill';
         const isEd = editing && editId === e.id && editable;
@@ -783,7 +842,10 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
             onDoubleClick={editing && editable ? (ev) => { ev.stopPropagation(); onStartEdit?.(e.id); } : undefined}
             style={{ ...renderEl(e, H), outline: sel && !isEd ? `1.5px solid ${selColor}` : 'none', outlineOffset: 2, cursor: editing ? (isEd ? 'text' : 'move') : 'default', userSelect: isEd ? 'text' : 'none', touchAction: 'none', pointerEvents: e.id === 'bgcover' ? 'none' : undefined }}>
             {isEd
-              ? <EditableText initial={e.text || ''} onCommit={(t) => { onCommitText?.(e.id, t); onEndEdit?.(); }} onCancel={() => onEndEdit?.()} />
+              ? <EditableText
+                  initial={PRICE_PARTS.has(e.id) ? combinedPrice() : (e.text || '')}
+                  onCommit={(t) => { if (PRICE_PARTS.has(e.id)) commitPrice(t); else onCommitText?.(e.id, t); onEndEdit?.(); }}
+                  onCancel={() => onEndEdit?.()} />
               : (e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} /> : (e.kind === 'box' ? null : e.text))}
             {sel && !isEd && editable && onStartEdit && <button title="Modifier le texte" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onStartEdit(e.id); }} style={{ position: 'absolute', top: -10, left: -10, width: 18, height: 18, borderRadius: '50%', background: '#16a34a', color: '#fff', border: '2px solid #fff', fontSize: 10, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 6 }}>✎</button>}
             {sel && !isEd && <button title="Supprimer ce bloc" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onDelEl(e.id); }} style={{ position: 'absolute', top: -10, right: -10, width: 18, height: 18, borderRadius: '50%', background: '#ef4444', color: '#fff', border: '2px solid #fff', fontSize: 11, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>}
@@ -873,7 +935,8 @@ function Planche({ project, scale, editing, selLabel, selEl, snap, setSelLabel, 
 interface PrintPage { wMm: number; hMm: number; gapXmm: number; gapYmm: number; labels: Label[]; tiling: boolean }
 function printPlan(project: Project) {
   const paper = PAPERS[project.printPaper || 'A4'] || PAPERS.A4;
-  const margin = project.printMarginMm ?? 0;
+  // Marge effective = celle choisie, mais jamais sous le retrait de sécurité (zone non-imprimable).
+  const margin = Math.max(project.printMarginMm ?? 0, SAFE_PRINT_MM);
   const labels = project.labels.length ? project.labels : [newLabel()];
   // Regroupe les étiquettes par taille → chaque format est tuilé correctement.
   const groups = new Map<string, { w: number; h: number; labels: Label[] }>();
@@ -1937,8 +2000,9 @@ function PrintPreviewModal({ project, setProject, onClose }: { project: Project;
             </select>
           </div>
           <div style={{ flex: '1 1 160px' }}>
-            <label style={lbl}>Marge : {project.printMarginMm ?? 0} mm</label>
-            <input type="range" min={0} max={15} step={1} value={project.printMarginMm ?? 0} onChange={e => setProject(p => ({ ...p, printMarginMm: parseInt(e.target.value) }))} style={{ width: '100%' }} />
+            <label style={lbl}>Marge : {Math.max(project.printMarginMm ?? 0, SAFE_PRINT_MM)} mm</label>
+            <input type="range" min={SAFE_PRINT_MM} max={15} step={1} value={Math.max(project.printMarginMm ?? 0, SAFE_PRINT_MM)} onChange={e => setProject(p => ({ ...p, printMarginMm: parseInt(e.target.value) }))} style={{ width: '100%' }} />
+            <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>Min. {SAFE_PRINT_MM} mm : évite que l&apos;imprimante « mange » le bord (bandeau du haut).</div>
           </div>
         </div>
         <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
