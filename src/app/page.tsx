@@ -54,34 +54,32 @@ const PAPERS: Record<string, { name: string; w: number; h: number }> = {
 };
 
 interface Meta { id: string; pharmacy: string; plan: string; updatedAt: number; }
-interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; aspect?: number; theme?: string; dateStart?: string; dateEnd?: string; }
+// `minMm` = plus petit côté de l'étiquette : c'est lui qui décide du palier de composition
+// (affiche / rayon / mini), donc de ce que l'on garde ou sacrifie sur une petite surface.
+interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; aspect?: number; minMm?: number; dateStart?: string; dateEnd?: string; }
 
 // ──────────────────────────────────────────────────────────────────────
-//  DIRECTION ARTISTIQUE
+//  DIRECTION ARTISTIQUE — MODÈLE UNIQUE « HOMME DE FER »
 // ──────────────────────────────────────────────────────────────────────
-
-const DA = {
-  bg: '#FFD400',        // jaune signature, chaud
-  band: '#2E4A3D',      // vert sapin profond
-  red: '#D81E27', red2: '#9E0F18',
-  priceY: '#FFD400',    // prix jaune dans le cercle
-  green: '#33503F',     // nom produit
-  ink: '#4A4632',       // mentions
-  promo: '#C2410C',     // titre PROMOTION (réglette)
+// Une seule et même étiquette pour TOUTE l'officine : plus de styles concurrents.
+// Lecture imposée, de haut en bas, telle qu'on lit un linéaire à 3 mètres :
+//   1. BLOC ROUGE  — l'univers (surtitre) puis LE DÉCLENCHEUR (−5€, +1 OFFERT, −50%…)
+//   2. LE PRODUIT  — nom en encre ardoise, 2 lignes maxi
+//   3. le descriptif (conditionnement) et, si besoin, le logo du labo
+//   4. LE PRIX     — rouge, second point d'accroche
+//   5. « Au lieu de » barré — la preuve de l'économie, jamais plus gros que le prix
+//   6. le pied     — validité + mentions + logo de l'officine, discrets
+// Une seule couleur d'accent (le rouge) : elle ne sert QU'à la promotion et au prix,
+// tout le reste est blanc / ardoise. C'est ce contraste unique qui fait vendre.
+const HDF = {
+  paper: '#FFFFFF',
+  red: '#E8334A',     // rouge promo (bloc accroche + prix)
+  ink: '#2E3B4E',     // nom du produit — bleu ardoise très foncé
+  old: '#3E4A5A',     // ancien prix barré
+  muted: '#79858F',   // descriptif, mentions
+  white: '#FFFFFF',
+  rule: 'rgba(255,255,255,0.9)',
 };
-
-// Filigrane premium : croix de pharmacie + zigzags, très subtil
-const WATERMARK = (() => {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'>
-<g fill='#000000' fill-opacity='0.045'><rect x='14' y='6' width='10' height='28' rx='2.5'/><rect x='5' y='15' width='28' height='10' rx='2.5'/></g>
-<g fill='none' stroke='#000000' stroke-opacity='0.045' stroke-width='3'><path d='M62 104 l16 -18 l16 18 l16 -18'/><path d='M70 40 h26 v-26'/></g></svg>`;
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-})();
-
-// Style « Officine » : 100 % vert (identité pharmacie) + un seul accent « promo »
-// (rouge = déclencheur d'achat) réservé au prix et au −%. Logique merchandising :
-// le vert installe la confiance, le rouge attire l'œil sur la bonne affaire.
-const OFFI = { bg: '#FFFFFF', green: '#0E7A4D', greenDark: '#0A5C3A', greenSoft: '#E7F2EC', ink: '#1C2B23', old: '#9AA7A0', muted: '#6B7B72', white: '#FFFFFF', promo: '#D62828' };
 
 const TYPES: { id: PromoType; label: string; icon: string; color: string }[] = [
   { id: 'prix-promo',    label: 'Prix Promo',       icon: '🏷️', color: '#D81E27' },
@@ -114,7 +112,9 @@ const BADGES = [
 ];
 
 // Couleurs rapides pour les textes (charte + classiques)
-const TEXT_COLORS = ['#21392B', '#2E4A3D', '#000000', '#FFFFFF', '#D81E27', '#C2410C', '#FFD400', '#15803d', '#1d4ed8', '#7c3aed'];
+// Palette du modèle d'abord (rouge promo, encre ardoise, gris, blanc) : les couleurs
+// hors charte restent accessibles par le sélecteur, mais ne sont plus proposées d'un clic.
+const TEXT_COLORS = ['#E8334A', '#2E3B4E', '#3E4A5A', '#79858F', '#FFFFFF', '#000000'];
 
 const PAGE_FORMATS = [
   { id: 'fit', name: '1 / page', w: 0, h: 0 },
@@ -181,15 +181,24 @@ function lotView(d: LabelData) {
   return { qty, free, paid, isPack, unit, lot, oldTotal, save, pct, tag, disc, oldTxt, mech };
 }
 
+// Offre « 2ᵉ produit à -X% » : à partir du prix unitaire et du pourcentage,
+// on calcule le prix des 2 (1 plein + 1 remisé). Textes prêts à afficher.
+function deux2(d: LabelData) {
+  const unit = pf(d.normalPrice);
+  const pct = Math.max(1, Math.min(99, parseInt((d.remiseManual || '').replace(/[^\d]/g, '')) || 50));
+  const lot2 = Math.round(unit * (2 - pct / 100) * 100) / 100; // plein + (-pct%)
+  return { unit, pct, lot2, unitTxt: `À L'UNITÉ ${ff(unit)} €`, lotTxt: `soit ${ff(lot2)} € le lot de 2` };
+}
+
 export function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelData>, size?: { w: number; h: number }): Label {
-  return { id: uid(), type, accent: DA.red, bg: DA.bg, data: { ...newData(), ...data }, overrides: {}, extra: [], ...(size ? { wMm: size.w, hMm: size.h } : {}) };
+  return { id: uid(), type, accent: HDF.red, bg: HDF.paper, data: { ...newData(), ...data }, overrides: {}, extra: [], ...(size ? { wMm: size.w, hMm: size.h } : {}) };
 }
 
 function defaultProject(): Project {
   return {
     pharmacy: 'Pharmacie Homme de Fer', plan: 'Plan promotionnel', logo: null, disclaimer: DISCLAIMER,
-    pageFormat: 'A4', labelWmm: 210, labelHmm: 297, printPaper: 'A4', printMarginMm: SAFE_PRINT_MM, theme: 'promo',
-    labels: [newLabel('prix-promo', { category: 'COMPLÉMENT ALIMENTAIRE', product: 'Chondro-haid Fort ARKOPHARMA', qtyLabel: 'Lot de 3 x 60 gélules*', normalPrice: '31,90', promoPrice: '26,90' })],
+    pageFormat: 'A4', labelWmm: 210, labelHmm: 297, printPaper: 'A4', printMarginMm: SAFE_PRINT_MM, theme: 'hdf',
+    labels: [newLabel('prix-promo', { category: 'CONFORT ARTICULAIRE', product: 'Chondroaid Fort', qtyLabel: 'Lot de 3 x 60 gélules*', normalPrice: '31,90', promoPrice: '26,90' })],
   };
 }
 
@@ -200,15 +209,15 @@ function migrate(p: Project): Project {
   if (q.disclaimer == null) q.disclaimer = DISCLAIMER;
   if (!q.printPaper) q.printPaper = 'A4';
   if (q.printMarginMm == null) q.printMarginMm = SAFE_PRINT_MM;
-  // styles disponibles : « promo » (jaune) et « officine » (blanc + vert). Legacy → promo.
-  if (q.theme === 'choc') q.theme = 'officine';
-  if (!q.theme || q.theme === 'luxe' || q.theme === 'editorial' || q.theme === 'premium') q.theme = 'promo';
-  q.labels = (q.labels || []).map(l => ({ ...l, data: { ...newData(), ...l.data } }));
+  // Un seul modèle désormais (« hdf ») : les anciens styles (jaune « promo », vert « officine »,
+  // luxe, éditorial…) sont normalisés dessus — même papier blanc, même rouge promo, mêmes règles.
+  q.theme = 'hdf';
+  q.labels = (q.labels || []).map(l => ({ ...l, accent: HDF.red, bg: HDF.paper, data: { ...newData(), ...l.data } }));
   return q;
 }
 
 // ──────────────────────────────────────────────────────────────────────
-//  ÉLÉMENTS PAR TYPE (DA premium, orientée)
+//  LE MODÈLE : composition unique, déclinée sur tous les formats
 // ──────────────────────────────────────────────────────────────────────
 
 const B = { font: SYS, rot: 0 };
@@ -223,487 +232,281 @@ function dateText(d: LabelData, o?: SeedOpts): string | null {
   return null;
 }
 
-// pieds (date, mentions, logo) — positions portrait / réglette
-function footEls(l: Label, o: SeedOpts): El[] {
+// ── Paliers de composition ────────────────────────────────────────────
+// Le modèle ne change pas : c'est la surface disponible qui décide de ce qu'on garde.
+// Ordre de sacrifice (du moins vital au plus vital), règle de merchandising :
+//   mentions → validité → logo officine → descriptif → surtitre catégorie.
+// On ne sacrifie JAMAIS : le déclencheur (bloc rouge), le nom du produit, le prix.
+//   L = affiche / vitrine (≥ 90 mm de petit côté) : tout.
+//   M = rayon (≥ 55 mm)   : on retire mentions + logo, on garde l'essentiel du message.
+//   S = mini (< 55 mm)    : déclencheur + produit + prix, rien d'autre.
+type Tier = 'L' | 'M' | 'S';
+const tierOf = (o: SeedOpts): Tier => {
+  const mm = o.minMm ?? (o.small ? 60 : 120);
+  return mm >= 90 ? 'L' : mm >= 55 ? 'M' : 'S';
+};
+
+// ── Moteur de composition verticale ───────────────────────────────────
+// Les blocs sont empilés dans l'ordre de lecture, avec des hauteurs exprimées en % de
+// l'étiquette. Un bloc absent (pas de descriptif, pas d'ancien prix, pas de mentions)
+// disparaît simplement de la pile et l'espace est redistribué aux respirations `flex`
+// — c'est ce qui fait tenir la MÊME maquette sur une affiche A4 et sur une mini 48×45.
+interface Blk { h?: number; flex?: number; el?: (y: number, h: number) => El[] }
+function flow(blocks: Blk[], top: number, height: number): El[] {
+  const fixed = blocks.reduce((a, b) => a + (b.flex ? 0 : (b.h || 0)), 0);
+  const flexTotal = blocks.reduce((a, b) => a + (b.flex || 0), 0);
+  // Trop-plein (contenu très long) : compression homothétique plutôt que débordement.
+  const k = fixed > height && fixed > 0 ? height / fixed : 1;
+  const free = Math.max(0, height - fixed * k);
   const out: El[] = [];
-  const dt = dateText(l.data, o);
-  // coordonnées de la zone logo + pied selon orientation
-  const lx = o.landscape ? 88 : 6, ly = o.landscape ? 80 : 84, lw = o.landscape ? 10 : 17;
-  if (!o.small) {
-    if (o.landscape) {
-      if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 3, y: 82, w: 55, size: 0.06, color: DA.band, weight: 700, align: 'left' });
-      if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 3, y: 91, w: 60, size: 0.048, color: DA.ink, weight: 500, align: 'left' });
-    } else {
-      if (dt) out.push({ ...B, id: 'date', kind: 'text', text: dt, x: 26, y: 87.5, w: 58, size: 0.019, color: DA.band, weight: 700, align: 'left' });
-      if (o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 26, y: 92, w: 60, size: 0.016, color: DA.ink, weight: 500, align: 'left' });
-    }
-  }
-  // LOGO : affiché uniquement si un logo a été téléversé — aucun emplacement vide.
-  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: lx, y: ly, w: lw, size: 0, color: '#000', weight: 400, align: 'left' });
-  return out;
-}
-
-// ── Style « Officine » : blanc + vert pharmacie, lisible de loin ──
-// Cadre commun (en-tête vert + croix, pied validité/mentions/logo) réutilisé par
-// tous les types. Hiérarchie merchandising : 1 héros (le deal), accroche −% géante,
-// zéro texte superflu. Vert = identité, rouge = la promo.
-function offiHeader(d: LabelData, asp: number): El[] {
-  return [
-    { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: OFFI.bg, size: 0, color: OFFI.bg, weight: 400, align: 'left' },
-    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 9, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
-    { ...B, id: 'cross', kind: 'text', text: '✚', x: 4, y: 2.3, size: 0.042, color: OFFI.white, weight: 900, align: 'left' },
-    { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 3, w: 100, size: fitSize(d.category, 0.9, asp, 0.03, 1, 0.016), color: OFFI.white, weight: 800, align: 'center', track: 0.16 },
-  ];
-}
-function offiFooter(l: Label, o: SeedOpts): El[] {
-  const out: El[] = [];
-  const dt = dateText(l.data, o);
-  // Petits formats (rayon / petite) : on retire validité + mentions pour rester lisible.
-  if (!o.small) out.push({ ...B, id: 'urgency', kind: 'text', text: dt || 'Offre dans la limite des stocks disponibles', x: 12, y: 90, w: 76, size: 0.02, color: OFFI.green, weight: 700, align: 'center', track: 0.02 });
-  if (!o.small && o.disclaimer) out.push({ ...B, id: 'disc', kind: 'text', text: o.disclaimer, x: 8, y: 95.5, w: 84, size: 0.013, color: OFFI.muted, weight: 400, align: 'center' });
-  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 86, y: 85, w: 10, size: 0, color: '#000', weight: 400, align: 'left' });
-  return out;
-}
-// Offre « 2ᵉ produit à -X% » : à partir du prix unitaire et du pourcentage,
-// on calcule le prix des 2 (1 plein + 1 remisé). Textes prêts à afficher.
-function deux2(d: LabelData) {
-  const unit = pf(d.normalPrice);
-  const pct = Math.max(1, Math.min(99, parseInt((d.remiseManual || '').replace(/[^\d]/g, '')) || 50));
-  const lot2 = Math.round(unit * (2 - pct / 100) * 100) / 100; // plein + (-pct%)
-  return { unit, pct, lot2, unitTxt: `À L'UNITÉ ${ff(unit)} €`, lotTxt: `soit ${ff(lot2)} € le lot de 2` };
-}
-
-// Disque rouge « accroche » (le −%, le OFFERT…), centré, avec texte ajusté.
-function offiBurst(big: string, small: string | null, asp: number, y = 30, w = 48): El[] {
-  const cx = 50 - w / 2, h = w * asp;
-  const out: El[] = [{ ...B, id: 'burst', kind: 'box', shape: 'circle', x: cx, y, w, bg: OFFI.promo, size: 0, color: OFFI.promo, weight: 400, align: 'left', shadow: true }];
-  const cy = y + h / 2;
-  if (small) {
-    out.push({ ...B, id: 'burstTxt', kind: 'text', text: big, x: cx, y: cy - h * 0.42, w, size: fitSize(big, w / 100 * 0.7, asp, 0.16, 1, 0.07), color: OFFI.white, weight: 900, align: 'center' });
-    out.push({ ...B, id: 'burstSub', kind: 'text', text: small, x: cx, y: cy + h * 0.1, w, size: fitSize(small, w / 100 * 0.82, asp, 0.04, 1, 0.022), color: OFFI.white, weight: 800, align: 'center', track: 0.08 });
-  } else {
-    out.push({ ...B, id: 'burstTxt', kind: 'text', text: big, x: cx, y: cy - h * 0.26, w, size: fitSize(big, w / 100 * 0.74, asp, 0.16, 1, 0.07), color: OFFI.white, weight: 900, align: 'center' });
+  let y = top;
+  for (const b of blocks) {
+    const h = b.flex ? (flexTotal ? (free * b.flex) / flexTotal : 0) : (b.h || 0) * k;
+    if (b.el) out.push(...b.el(y, h));
+    y += h;
   }
   return out;
 }
 
-// Pastille « remise » Officine : pilule rouge horizontale, texte blanc maximisé.
-// Une pilule large laisse bien plus de place au chiffre qu'un disque (qui gaspille les coins)
-// → la remise « -5€ / -30% » est nettement plus lisible de loin, à surface égale.
-function offiSave(txt: string, asp: number, x: number, y: number, w: number, h: number, bg = OFFI.promo, fg = OFFI.white): El[] {
-  const fs = fitSize(txt, (w / 100) * 0.8, asp, (h / 100) * 0.66, 1, 0.04);
-  return [
-    { ...B, id: 'saveBox', kind: 'box', x, y, w, h, bg, radius: 999, size: 0, color: bg, weight: 400, align: 'left', shadow: true },
-    { ...B, id: 'saveTxt', kind: 'text', text: txt, x, y: y + (h - fs * 100) / 2, w, size: fs, color: fg, weight: 900, align: 'center', track: 0.01 },
-  ];
+// Un texte qui remplit sa case : la taille découle de la hauteur allouée ET de la
+// largeur disponible (auto-fit), puis le bloc est centré verticalement dans sa case.
+// Résultat : aucun réglage de taille en dur, donc aucune casse au changement de format.
+// `fitW` = marge de sécurité en largeur. L'auto-fit suppose une lettre moyenne ; les très
+// gros chiffres en graisse 900 (« −3,99€ », « −50% ») sont bien plus larges que la moyenne
+// et débordaient de leur bloc rouge. On leur réserve donc une marge plus généreuse.
+interface TOpt {
+  x?: number; w?: number; color?: string; weight?: number; align?: Align; track?: number;
+  italic?: boolean; lines?: number; fill?: number; fitW?: number; floor?: number; strike?: boolean; strikeW?: number; nowrap?: boolean;
+  size?: number;   // taille imposée (quand la case a été dimensionnée sur le texte, cf. measure)
+}
+// Mesure d'un texte dans sa case : taille retenue, nombre de lignes réellement occupées et
+// hauteur réelle. Sert à dimensionner une case SUR son contenu — c'est ce qui colle le
+// descriptif juste sous le nom du produit au lieu de laisser un trou quand le nom tient
+// sur une seule ligne (le blanc doit séparer les blocs, pas les couper en deux).
+function measure(t: string, slot: number, asp: number, o: TOpt) {
+  const x = o.x ?? 4, w = o.w ?? Math.max(4, 100 - 2 * x);
+  const maxLines = o.lines ?? 1;
+  const cap = ((slot / 100) * (o.fill ?? 0.88)) / maxLines;   // hauteur d'une ligne, en fraction de H
+  const wFrac = (w / 100) * (o.fitW ?? 0.94);
+  const size = o.size ?? fitSize(t, wFrac, asp, cap, maxLines, Math.min(o.floor ?? 0.011, cap));
+  const lines = Math.max(1, Math.min(maxLines, Math.ceil((0.55 * Math.max(1, t.length) * size) / (wFrac * asp))));
+  return { x, w, size, lines, h: size * 100 * lines * 1.02 };
+}
+function T(id: string, text: string, y: number, slot: number, asp: number, o: TOpt = {}): El[] {
+  const t = (text || '').trim();
+  if (!t || slot <= 0) return [];
+  const m = measure(t, slot, asp, o);
+  return [{
+    ...B, id, kind: 'text', text: t, x: m.x, w: m.w,
+    y: y + Math.max(0, (slot - m.h) / 2),
+    size: m.size, color: o.color ?? HDF.ink, weight: o.weight ?? 800, align: o.align ?? 'center',
+    track: o.track, italic: o.italic, strike: o.strike, strikeW: o.strikeW, nowrap: o.nowrap,
+  }];
+}
+// Une case dimensionnée sur son texte (hauteur = hauteur réelle du texte).
+function fitBlk(id: string, text: string, budget: number, asp: number, o: TOpt): Blk[] {
+  const t = (text || '').trim();
+  if (!t) return [];
+  const m = measure(t, budget, asp, o);
+  return [{ h: m.h, el: (y) => T(id, t, y, m.h, asp, { ...o, size: m.size }) }];
 }
 
-// Prix « charme » Officine : euros GROS + centimes/€ plus petits (réduit la « douleur du prix »).
-// Astuce merchandising : on aligne la VIRGULE au centre de la zone → le prix reste optiquement
-// centré quel que soit le nombre de chiffres, et les centimes montent en exposant.
-function offiPrice(raw: string, asp: number, y: number, bigCap: number, floor: number, x0 = 0, w = 99, color = OFFI.promo, _centsRatio = 0.48): El[] {
-  // Prix = UN SEUL element « 26,90 € », editable d'un bloc au double-clic (fini les deux moities
-  // dont l'une disparaissait a l'edition). Gros, gras, centre.
-  const txt = eur(raw);
-  const size = fitSize(txt, (w / 100) * 0.8, asp, bigCap, 1, floor); // marge 0.8 : « 26,90 € » sur UNE ligne
-  return [
-    { ...B, id: 'priceInt', kind: 'text', text: txt, x: x0, y, w, size, color, weight: 900, align: 'center', nowrap: true },
-  ];
-}
-
-function officinePrixPromo(l: Label, o: SeedOpts): El[] {
-  const d = l.data, asp = o.aspect || 0.7;
-  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
-  const manual = (d.remiseManual || '').trim();
-  // Remise toujours présente s'il y a une réduction : % si dispo, sinon € (et vice-versa).
-  const discTxt = d.remiseType === 'pct'
-    ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : ''))
-    : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
-  const hasOld = normal > pf(d.promoPrice);
-  // Ordre merchandising imposé (s'adapte aux noms longs, produit sur 2 lignes max) :
-  // 1) catégorie (bandeau) · 2) PRIX PROMO (héros) · 3) AU LIEU DE · 4) nom produit ·
-  // 5) remise (disque) · 6) mentions légales (pied).
-  const out: El[] = [...offiHeader(d, asp)];
-  // 2) Prix de vente en ROUGE (héros), juste sous la catégorie — centimes en exposant.
-  out.push(...offiPrice(d.promoPrice, asp, 11, 0.18, 0.11));
-  // 3) Au lieu de — ancien prix barré.
-  if (hasOld) out.push(
-    { ...B, id: 'oldLabel', kind: 'text', text: 'AU LIEU DE', x: 0, y: 31, w: 100, size: 0.018, color: OFFI.muted, weight: 700, align: 'center', track: 0.14 },
-    { ...B, id: 'old', kind: 'text', text: eur(d.normalPrice), x: 0, y: 33.5, w: 100, size: 0.034, color: OFFI.old, weight: 800, align: 'center', strike: true, strikeW: 0.045 },
-  );
-  // 4) Nom du produit (+ descriptif éventuel).
-  out.push({ ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 42, w: 90, size: fitSize(d.product, 0.92, asp, 0.05, 2, 0.03), color: OFFI.greenDark, weight: 900, align: 'center' });
-  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 6, y: 53.5, w: 88, size: fitSize(d.qtyLabel, 0.92, asp, 0.022, 1, 0.016), color: OFFI.muted, weight: 600, align: 'center', italic: true });
-  // 5) Remise (ex. −4 €) — pastille rouge large, texte blanc XXL (plus lisible qu'un disque).
-  if (discTxt) out.push(...offiSave(discTxt, asp, 23, 61, 54, 17));
-  // 6) Mentions légales / validité.
-  out.push(...offiFooter(l, o));
-  return out;
-}
-
-function officineBon(l: Label, o: SeedOpts): El[] {
-  const d = l.data, asp = o.aspect || 0.7;
-  const out: El[] = [...offiHeader(d, asp),
-    { ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 0, y: 13, w: 100, size: 0.032, color: OFFI.green, weight: 800, align: 'center', track: 0.12 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 20, w: 90, size: fitSize(d.product, 0.9, asp, 0.05, 2, 0.032), color: OFFI.greenDark, weight: 900, align: 'center' },
-  ];
-  // Valeur du bon = héros géant rouge
-  out.push(...offiBurst(eur(d.couponValue), 'DE RÉDUCTION', asp, 33, 50));
-  out.push({ ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 6, y: 80, w: 88, size: 0.026, color: OFFI.green, weight: 700, align: 'center' });
-  out.push(...offiFooter(l, o));
-  return out;
-}
-
-function officineLot(l: Label, o: SeedOpts): El[] {
-  const d = l.data, asp = o.aspect || 0.7;
-  const lv = lotView(d);
-  const out: El[] = [...offiHeader(d, asp),
-    { ...B, id: 'ltag', kind: 'text', text: lv.isPack ? `LOT DE ${lv.qty}` : 'OFFRE LOT', x: 0, y: 13, w: 100, size: 0.032, color: OFFI.green, weight: 800, align: 'center', track: 0.12 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 20, w: 90, size: fitSize(d.product, 0.9, asp, 0.05, 2, 0.032), color: OFFI.greenDark, weight: 900, align: 'center' },
-  ];
-  if (lv.isPack) {
-    // Pack à prix fixe : le prix du lot en héros, prix normal barré + économie.
-    out.push(...offiBurst(eur(d.lotPrice), 'LE LOT', asp, 32, 48));
-    out.push({ ...B, id: 'mech', kind: 'text', text: lv.oldTxt ? `au lieu de ${lv.oldTxt}${lv.pct ? `  −${lv.pct}%` : ''}` : '', x: 6, y: 78, w: 88, size: 0.03, color: OFFI.greenDark, weight: 800, align: 'center' });
-  } else {
-    // « +N OFFERT(S) » = héros géant rouge
-    out.push(...offiBurst(`+${lv.free}`, `OFFERT${lv.free > 1 ? 'S' : ''}`, asp, 32, 48));
-    out.push({ ...B, id: 'mech', kind: 'text', text: lv.mech, x: 6, y: 75, w: 88, size: 0.03, color: OFFI.greenDark, weight: 800, align: 'center' });
-    out.push({ ...B, id: 'lotPrice', kind: 'text', text: `LE LOT : ${eur(d.lotPrice)}`, x: 2, y: 80.5, w: 96, size: fitSize(`LE LOT : ${eur(d.lotPrice)}`, 0.9, asp, 0.05, 1, 0.03), color: OFFI.promo, weight: 900, align: 'center' });
-  }
-  out.push(...offiFooter(l, o));
-  return out;
-}
-
-function officineMulti(l: Label, o: SeedOpts): El[] {
-  const d = l.data, asp = o.aspect || 0.7;
-  const cols = [{ q: d.t1q, p: d.t1p }, { q: d.t2q, p: d.t2p }, { q: d.t3q, p: d.t3p }];
-  const out: El[] = [...offiHeader(d, asp),
-    { ...B, id: 'mtitle', kind: 'text', text: 'OFFRE MULTI-ACHAT', x: 0, y: 13, w: 100, size: 0.032, color: OFFI.green, weight: 800, align: 'center', track: 0.1 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 20, w: 90, size: fitSize(d.product, 0.9, asp, 0.05, 2, 0.032), color: OFFI.greenDark, weight: 900, align: 'center' },
-  ];
-  cols.forEach((c, i) => {
-    const cx = 7 + i * 29, best = i === 2;
-    out.push({ ...B, id: `col${i}`, kind: 'box', x: cx, y: 36, w: 26, h: 26, bg: best ? OFFI.promo : OFFI.greenSoft, radius: 10, size: 0, color: best ? OFFI.promo : OFFI.greenSoft, weight: 400, align: 'left', shadow: best });
-    out.push({ ...B, id: `q${i}`, kind: 'text', text: `${c.q} pce${parseInt(c.q) > 1 ? 's' : ''}`, x: cx, y: 39, w: 26, size: 0.028, color: best ? OFFI.white : OFFI.greenDark, weight: 800, align: 'center' });
-    out.push({ ...B, id: `p${i}`, kind: 'text', text: eur(c.p), x: cx - 1.5, y: 49, w: 29, size: fitSize(eur(c.p), 0.26, asp, 0.05, 1, 0.03), color: best ? OFFI.white : OFFI.promo, weight: 900, align: 'center' });
-  });
-  out.push({ ...B, id: 'mfoot', kind: 'text', text: 'Plus vous achetez, plus vous économisez', x: 6, y: 70, w: 88, size: 0.028, color: OFFI.green, weight: 700, align: 'center' });
-  out.push(...offiFooter(l, o));
-  return out;
-}
-
-function officine2eme(l: Label, o: SeedOpts): El[] {
-  const d = l.data, asp = o.aspect || 0.7;
-  const { pct, unitTxt, lotTxt } = deux2(d);
-  const out: El[] = [...offiHeader(d, asp),
-    { ...B, id: 'tag', kind: 'text', text: 'OFFRE 2ᵉ PRODUIT', x: 0, y: 13, w: 100, size: 0.032, color: OFFI.green, weight: 800, align: 'center', track: 0.1 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 20, w: 90, size: fitSize(d.product, 0.9, asp, 0.05, 2, 0.032), color: OFFI.greenDark, weight: 900, align: 'center' },
-    { ...B, id: 'unitp', kind: 'text', text: unitTxt, x: 5, y: 31, w: 90, size: 0.026, color: OFFI.muted, weight: 700, align: 'center', track: 0.02 },
-  ];
-  // -X% = héros géant rouge (disque), sous-titre « SUR LE 2ᵉ ».
-  out.push(...offiBurst(`-${pct}%`, 'SUR LE 2ᵉ', asp, 36, 50));
-  out.push({ ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 6, y: 80, w: 88, size: 0.028, color: OFFI.green, weight: 700, align: 'center' });
-  out.push(...offiFooter(l, o));
-  return out;
-}
-
-function officineSeed(l: Label, o: SeedOpts): El[] {
-  if (l.type === 'bon-reduction') return officineBon(l, o);
-  if (l.type === 'remise-lot') return officineLot(l, o);
-  if (l.type === 'multi-achat') return officineMulti(l, o);
-  if (l.type === 'remise-2eme') return officine2eme(l, o);
-  return officinePrixPromo(l, o);
-}
-
-// ── Officine COMPACT (petits formats : rayon, petite) : épuré, l'essentiel en gros ──
-function officineCompact(l: Label, o: SeedOpts): El[] {
-  const d = l.data, asp = o.aspect || 0.8;
-  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
-  const manual = (d.remiseManual || '').trim();
-  const disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
-  const hasOld = normal > pf(d.promoPrice);
-  // Même ordre que le grand format, condensé : catégorie · PRIX · au lieu de · produit · remise.
-  const out: El[] = [...offiHeader(d, asp)];
-  out.push(...offiPrice(d.promoPrice, asp, 13, 0.24, 0.14));
-  if (hasOld) out.push({ ...B, id: 'old', kind: 'text', text: eur(d.normalPrice), x: 0, y: 40, w: 100, size: 0.05, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.05 });
-  out.push({ ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 50, w: 92, size: fitSize(d.product, 0.92, asp, 0.072, 2, 0.044), color: OFFI.greenDark, weight: 900, align: 'center' });
-  if (disc) out.push(...offiSave(disc, asp, 22, 73, 56, 16));
-  return out;
-}
-
-// ── Officine RÉGLETTE (paysage) : bande verte identité à gauche, prix à droite ──
-function officineReglette(l: Label, o: SeedOpts): El[] {
-  const d = l.data, asp = o.aspect || 2.5;
-  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
-  const manual = (d.remiseManual || '').trim();
-  let priceVal = d.promoPrice, oldTxt = normal > pf(d.promoPrice) ? eur(d.normalPrice) : '', tag = '';
-  let disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
-  if (l.type === 'bon-reduction') { priceVal = d.couponValue; oldTxt = ''; disc = ''; tag = 'BON DE RÉDUCTION'; }
-  else if (l.type === 'remise-lot') { const lv = lotView(d); priceVal = d.lotPrice; oldTxt = lv.oldTxt; disc = lv.disc; tag = lv.tag; }
-  else if (l.type === 'multi-achat') { priceVal = d.t3p || d.t1p; oldTxt = ''; disc = ''; tag = 'MULTI-ACHAT'; }
-  const out: El[] = [
-    { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: OFFI.bg, size: 0, color: OFFI.bg, weight: 400, align: 'left' },
-    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 54, h: 100, bg: OFFI.green, size: 0, color: OFFI.green, weight: 400, align: 'left' },
-    { ...B, id: 'cross', kind: 'text', text: '✚', x: 3, y: 7, size: 0.14, color: OFFI.white, weight: 900, align: 'left' },
-    { ...B, id: 'cat', kind: 'text', text: d.category, x: 14, y: 10, w: 38, size: fitSize(d.category, 0.36, asp, 0.1, 1, 0.05), color: OFFI.white, weight: 800, align: 'left', track: 0.06 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 33, w: 48, size: fitSize(d.product, 0.46, asp, 0.16, 3, 0.075), color: OFFI.white, weight: 900, align: 'left' },
-  ];
-  // 2ᵉ produit à -X% : pourcentage en héros à droite (rouge), prix unité + lot.
-  if (l.type === 'remise-2eme') {
-    const { pct: p2, unitTxt, lotTxt } = deux2(d);
-    out.push({ ...B, id: 'tag', kind: 'text', text: '2ᵉ PRODUIT', x: 56, y: 9, w: 42, size: 0.07, color: OFFI.green, weight: 800, align: 'center', track: 0.06 });
-    out.push({ ...B, id: 'unitp', kind: 'text', text: unitTxt, x: 56, y: 26, w: 42, size: fitSize(unitTxt, 0.4, asp, 0.06, 1, 0.04), color: OFFI.muted, weight: 700, align: 'center' });
-    out.push({ ...B, id: 'pct', kind: 'text', text: `-${p2}%`, x: 55, y: 33, w: 44, size: fitSize(`-${p2}%`, 0.42, asp, 0.34, 1, 0.2), color: OFFI.promo, weight: 900, align: 'center' });
-    out.push({ ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 55, y: 82, w: 44, size: fitSize(lotTxt, 0.42, asp, 0.05, 1, 0.03), color: OFFI.green, weight: 600, align: 'center' });
-    return out;
-  }
-  // Colonne droite, même ordre que les autres formats : tag · PRIX (héros) · au lieu de · remise.
-  if (tag) out.push({ ...B, id: 'tag', kind: 'text', text: tag, x: 56, y: 7, w: 42, size: 0.07, color: OFFI.green, weight: 800, align: 'center', track: 0.1 });
-  out.push(...offiPrice(priceVal, asp, 18, 0.31, 0.18, 54, 45));
-  if (oldTxt) out.push({ ...B, id: 'old', kind: 'text', text: oldTxt, x: 55, y: 53, w: 44, size: 0.085, color: OFFI.old, weight: 700, align: 'center', strike: true, strikeW: 0.04 });
-  if (disc) out.push(...offiSave(disc, asp, 60, 64, 36, 15));
-  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 54, y: 82, w: 30, size: fitSize(d.qtyLabel, 0.28, asp, 0.06, 1, 0.04), color: OFFI.muted, weight: 600, align: 'center', italic: true });
-  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 4, y: 82, w: 13, size: 0, color: '#000', weight: 400, align: 'left' });
-  return out;
-}
-
-// ── Promo COMPACT (petits formats : rayon, petite) : le thème jaune n'avait pas de
-// gabarit petit format → la grosse mise en page portrait débordait. Version épurée et
-// lisible : bandeau catégorie, prix charme rouge, ancien prix barré, pastille remise. ──
-function daCompact(l: Label, o: SeedOpts): El[] {
-  const d = l.data, asp = o.aspect || 0.8;
-  const GOLD = '#A89A6E';
-  // En-tête commun : bandeau vert + catégorie.
-  const out: El[] = [
-    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 10, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
-    { ...B, id: 'cat', kind: 'text', text: d.category, x: 2, y: 2.6, w: 96, size: fitSize(d.category, 0.94, asp, 0.045, 1, 0.028), color: '#fff', weight: 800, align: 'center' },
-  ];
-  const product = (y: number) => ({ ...B, id: 'product', kind: 'text' as ElKind, text: d.product, x: 4, y, w: 92, size: fitSize(d.product, 0.92, asp, 0.066, 2, 0.03), color: '#16231A', weight: 900, align: 'center' as Align });
-
+// ── LE DÉCLENCHEUR ────────────────────────────────────────────────────
+// Toutes les mécaniques promo sont traduites dans le MÊME vocabulaire visuel :
+//   big  = ce qu'on lit à 3 m (−5€, +1 OFFERT, −50%…)
+//   sub  = la précision, sous le déclencheur
+//   price / old = le prix héros et sa preuve barrée
+//   note = ce que dit le prix quand il n'y a pas d'ancien prix (« l'unité », « le lot de 3 »)
+//   foot = la mécanique détaillée, en pied (paliers, « soit X € les 2 »…)
+interface Mech { big: string; sub: string; price: string; old: string; note: string; foot: string }
+function mechOf(l: Label): Mech {
+  const d = l.data;
   if (l.type === 'bon-reduction') {
-    out.push({ ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 2, y: 12, w: 96, size: fitSize('BON DE RÉDUCTION', 0.9, asp, 0.04, 1, 0.024), color: DA.green, weight: 800, align: 'center', track: 0.06 });
-    out.push(product(22));
-    out.push(...offiPrice(d.couponValue, asp, 40, 0.22, 0.12, 0, 99, DA.red));
-    out.push({ ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 4, y: 82, w: 92, size: fitSize(`Valable jusqu'au ${d.couponExpiry}`, 0.9, asp, 0.035, 1, 0.022), color: DA.green, weight: 700, align: 'center' });
-    return out;
+    const v = pf(d.couponValue);
+    return {
+      big: v > 0 ? `-${fr(v)}€` : 'BON', sub: 'de bon de réduction',
+      price: '', old: '', note: 'à valoir immédiatement en caisse',
+      foot: d.couponExpiry ? `Valable jusqu'au ${d.couponExpiry}` : '',
+    };
   }
   if (l.type === 'remise-lot') {
     const lv = lotView(d);
-    out.push(product(13));
-    out.push(...offiSave(lv.isPack ? `LOT DE ${lv.qty}` : `+${lv.free} OFFERT${lv.free > 1 ? 'S' : ''}`, asp, 12, 34, 76, 22, DA.red, '#fff'));
-    out.push({ ...B, id: 'lotPrice', kind: 'text', text: `LE LOT : ${eur(d.lotPrice)}`, x: 2, y: 66, w: 96, size: fitSize(`LE LOT : ${eur(d.lotPrice)}`, 0.94, asp, 0.07, 1, 0.04), color: DA.red, weight: 900, align: 'center' });
-    return out;
+    const old = lv.oldTotal > lv.lot && lv.lot > 0 ? `${ff(lv.oldTotal)} €` : '';
+    return {
+      big: lv.isPack ? (lv.save > 0 ? `-${fr(lv.save)}€` : `LOT DE ${lv.qty}`) : `+${lv.free} OFFERT${lv.free > 1 ? 'S' : ''}`,
+      sub: lv.isPack ? `sur le lot de ${lv.qty}` : `${lv.paid} acheté${lv.paid > 1 ? 's' : ''} + ${lv.free} offert${lv.free > 1 ? 's' : ''}`,
+      price: d.lotPrice, old, note: `le lot de ${lv.qty}`,
+      foot: lv.isPack && lv.unit > 0 ? `soit ${ff(lv.lot / lv.qty)} € l'unité` : '',
+    };
   }
   if (l.type === 'multi-achat') {
-    // Petit format : on met en avant le meilleur palier (le plus avantageux).
-    const q = d.t3q || d.t1q, p = d.t3p || d.t1p;
-    out.push(product(13));
-    out.push({ ...B, id: 'mtitle', kind: 'text', text: `DÈS ${q} ACHETÉS`, x: 2, y: 33, w: 96, size: fitSize(`DÈS ${q} ACHETÉS`, 0.9, asp, 0.045, 1, 0.028), color: DA.green, weight: 800, align: 'center', track: 0.04 });
-    out.push(...offiPrice(p, asp, 44, 0.22, 0.12, 0, 99, DA.red));
-    return out;
+    const p1 = pf(d.t1p), best = pf(d.t3p) || pf(d.t2p) || p1;
+    const qBest = (d.t3q || d.t2q || d.t1q || '').trim();
+    const pct = p1 > 0 && best > 0 && best < p1 ? Math.round((1 - best / p1) * 100) : 0;
+    // Les paliers ne disparaissent pas : ils passent en pied, sur une ligne, sans casser la maquette.
+    const ladder = ([[d.t1q, d.t1p], [d.t2q, d.t2p], [d.t3q, d.t3p]] as [string, string][])
+      .filter(([q, p]) => (q || '').trim() && pf(p) > 0)
+      .map(([q, p]) => `${q} = ${eur(p)}`).join('   ·   ');
+    return {
+      big: pct ? `-${pct}%` : (qBest ? `DÈS ${qBest}` : 'MULTI-ACHAT'),
+      sub: qBest ? `dès ${qBest} achetés` : 'plus vous achetez, plus vous économisez',
+      price: best > 0 ? ff(best) : d.t1p, old: p1 > best && p1 > 0 ? `${ff(p1)} €` : '',
+      note: "l'unité", foot: ladder,
+    };
   }
   if (l.type === 'remise-2eme') {
-    const { pct: p2, lotTxt } = deux2(d);
-    out.push(product(13));
-    out.push({ ...B, id: 'pct', kind: 'text', text: `-${p2}%`, x: 0, y: 30, w: 100, size: fitSize(`-${p2}%`, 0.96, asp, 0.26, 1, 0.16), color: DA.red, weight: 900, align: 'center' });
-    out.push({ ...B, id: 'on2nd', kind: 'text', text: 'SUR LE 2ᵉ PRODUIT', x: 2, y: 66, w: 96, size: fitSize('SUR LE 2ᵉ PRODUIT', 0.9, asp, 0.045, 1, 0.028), color: DA.green, weight: 800, align: 'center', track: 0.03 });
-    out.push({ ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 2, y: 78, w: 96, size: fitSize(lotTxt, 0.9, asp, 0.034, 1, 0.022), color: DA.ink, weight: 600, align: 'center' });
-    return out;
+    const { unit, pct, lot2 } = deux2(d);
+    return {
+      big: `-${pct}%`, sub: 'sur le 2ᵉ produit',
+      price: unit > 0 ? ff(unit) : d.normalPrice, old: '', note: "l'unité",
+      foot: unit > 0 ? `soit ${ff(lot2)} € les 2 produits` : '',
+    };
   }
-  // ── PRIX PROMO (défaut) ──
+  // ── PRIX PROMO (par défaut) ──
   const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
   const manual = (d.remiseManual || '').trim();
-  const disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
-  out.push(...offiPrice(d.promoPrice, asp, 14, 0.24, 0.14, 0, 99, DA.red));
-  if (normal > pf(d.promoPrice)) out.push({ ...B, id: 'old', kind: 'text', text: eur(d.normalPrice), x: 0, y: 41, w: 100, size: 0.045, color: GOLD, weight: 700, align: 'center', strike: true, strikeW: 0.05 });
-  out.push(product(51));
-  if (disc) out.push(...offiSave(disc, asp, 22, 74, 56, 16, DA.red, '#fff'));
-  return out;
+  const big = d.remiseType === 'pct'
+    ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : 'PROMO'))
+    : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : 'PROMO')));
+  return {
+    big, sub: big === 'PROMO' ? 'offre du moment' : 'de remise immédiate',
+    price: d.promoPrice, old: normal > pf(d.promoPrice) ? `${ff(normal)} €` : '',
+    note: '', foot: '',
+  };
 }
 
-// ── Promo RÉGLETTE (paysage) : identité verte à gauche, prix à droite — tous types.
-// Clone de la géométrie Officine (déjà validée) avec la palette jaune/vert/rouge. ──
-function daReglette(l: Label, o: SeedOpts): El[] {
-  const d = l.data, asp = o.aspect || 2.5;
-  const { normal, pct, remise } = priceParts(d.normalPrice, d.promoPrice);
-  const manual = (d.remiseManual || '').trim();
-  let priceVal = d.promoPrice, oldTxt = normal > pf(d.promoPrice) ? eur(d.normalPrice) : '', tag = '';
-  let disc = d.remiseType === 'pct' ? ((manual || pct) ? `-${manual || pct}%` : (remise ? `-${remise}€` : '')) : (manual ? `-${manual}€` : (remise ? `-${remise}€` : (pct ? `-${pct}%` : '')));
-  if (l.type === 'bon-reduction') { priceVal = d.couponValue; oldTxt = ''; disc = ''; tag = 'BON DE RÉDUCTION'; }
-  else if (l.type === 'remise-lot') { const lv = lotView(d); priceVal = d.lotPrice; oldTxt = lv.oldTxt; disc = lv.disc; tag = lv.tag; }
-  else if (l.type === 'multi-achat') { priceVal = d.t3p || d.t1p; oldTxt = ''; disc = ''; tag = 'MULTI-ACHAT'; }
-  const out: El[] = [
-    { ...B, id: 'bgcover', kind: 'box', x: 0, y: 0, w: 100, h: 100, bg: DA.bg, size: 0, color: DA.bg, weight: 400, align: 'left' },
-    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 54, h: 100, bg: DA.band, size: 0, color: DA.band, weight: 400, align: 'left' },
-    { ...B, id: 'cross', kind: 'text', text: '✚', x: 3, y: 7, size: 0.14, color: '#fff', weight: 900, align: 'left' },
-    { ...B, id: 'cat', kind: 'text', text: d.category, x: 14, y: 10, w: 38, size: fitSize(d.category, 0.36, asp, 0.1, 1, 0.05), color: '#fff', weight: 800, align: 'left', track: 0.06 },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 4, y: 33, w: 48, size: fitSize(d.product, 0.46, asp, 0.16, 3, 0.05), color: '#fff', weight: 900, align: 'left' },
+// ── Le bloc rouge (l'accroche) ────────────────────────────────────────
+// Surtitre univers · filet · DÉCLENCHEUR · précision. Le déclencheur prend toute la
+// place restante : c'est lui qui arrête le client dans l'allée.
+function heroBlock(l: Label, o: SeedOpts, m: Mech, y0: number, h: number, red: string, tier: Tier): El[] {
+  const d = l.data, asp = o.aspect || 0.7;
+  const pad = tier === 'L' ? 3 : 2;
+  const box: El = { ...B, id: 'hero', kind: 'box', x: pad, y: y0, w: 100 - 2 * pad, h, bg: red, size: 0, color: red, weight: 400, align: 'left' };
+  const full = tier !== 'S';   // en mini, le surtitre et le filet sautent : place au chiffre
+  const inner = flow([
+    { h: h * 0.09 },
+    ...(full ? [{ h: h * 0.13, el: (y: number, hh: number) => T('cat', d.category, y, hh, asp, { x: pad + 5, color: HDF.white, weight: 800, track: 0.16, fill: 0.66 }) }] : []),
+    ...(full ? [{ h: h * 0.06, el: (y: number, hh: number) => [{ ...B, id: 'rule', kind: 'box' as ElKind, x: 34, y: y + hh / 2, w: 32, h: Math.max(0.22, h * 0.014), bg: HDF.rule, size: 0, color: HDF.rule, weight: 400, align: 'left' as Align }] }] : []),
+    { flex: 1, el: (y: number, hh: number) => T('mech', m.big, y, hh, asp, { x: pad + 3, color: HDF.white, weight: 900, nowrap: true, fill: 0.94, fitW: 0.78, floor: 0.03 }) },
+    ...(m.sub && full ? [{ h: h * 0.15, el: (y: number, hh: number) => T('mechSub', m.sub, y, hh, asp, { x: pad + 4, color: HDF.white, weight: 700, fill: 0.6 }) }] : []),
+    { h: h * (full ? 0.09 : 0.06) },
+  ], y0, h);
+  return [box, ...inner];
+}
+
+// La ligne sous le prix : « Au lieu de 31,90 € » (la preuve), sinon la nature du prix.
+function underPrice(m: Mech, y: number, h: number, asp: number): El[] {
+  if (m.old) return [
+    ...T('oldLabel', 'Au lieu de', y, h, asp, { x: 2, w: 47, align: 'right', color: HDF.ink, weight: 800, fill: 0.5 }),
+    ...T('old', m.old, y, h, asp, { x: 51, w: 47, align: 'left', color: HDF.old, weight: 800, strike: true, strikeW: 0.07, fill: 0.78, nowrap: true }),
   ];
-  // 2ᵉ produit à -X% : cercle rouge à droite, pourcentage en héros (palette DA).
-  if (l.type === 'remise-2eme') {
-    const { pct: p2, unitTxt, lotTxt } = deux2(d);
-    const cbg = `radial-gradient(circle at 50% 50%, ${l.accent} 58%, ${DA.red2})`;
-    out.push({ ...B, id: 'circle', kind: 'box', shape: 'circle', x: 59, y: 4, w: 37, bg: cbg, size: 0, color: l.accent, weight: 400, align: 'left', shadow: true });
-    out.push({ ...B, id: 'unitp', kind: 'text', text: unitTxt, x: 59, y: 18, w: 37, size: fitSize(unitTxt, 0.3, asp, 0.05, 1, 0.03), color: '#fff', weight: 700, align: 'center', track: 0.02 });
-    out.push({ ...B, id: 'pct', kind: 'text', text: `-${p2}%`, x: 59, y: 26, w: 37, size: fitSize(`-${p2}%`, 0.32, asp, 0.28, 1, 0.18), color: DA.priceY, weight: 900, align: 'center' });
-    out.push({ ...B, id: 'on2nd', kind: 'text', text: 'SUR LE 2ᵉ PRODUIT', x: 58, y: 61, w: 39, size: fitSize('SUR LE 2ᵉ PRODUIT', 0.34, asp, 0.043, 1, 0.026), color: '#fff', weight: 800, align: 'center', track: 0.01 });
-    out.push({ ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 58, y: 72, w: 39, size: fitSize(lotTxt, 0.34, asp, 0.04, 1, 0.024), color: '#fff', weight: 600, align: 'center' });
-    if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 4, y: 82, w: 13, size: 0, color: '#000', weight: 400, align: 'left' });
-    return out;
+  return T('priceNote', m.note, y, h, asp, { x: 6, color: HDF.muted, weight: 700, italic: true, fill: 0.55 });
+}
+
+// ── PORTRAIT (affiche A4, vitrine, rayon, mini) ───────────────────────
+function hdfPortrait(l: Label, o: SeedOpts): El[] {
+  const d = l.data, asp = o.aspect || 0.7, red = l.accent || HDF.red, tier = tierOf(o);
+  const m = mechOf(l);
+  const dt = dateText(d, o);
+  // Ligne de pied : la mécanique détaillée prime sur la validité, qui prime sur la mention stocks.
+  const urgency = m.foot || dt || (tier === 'L' ? 'Offre dans la limite des stocks disponibles' : '');
+  const hero = tier === 'L' ? 33 : tier === 'M' ? 31 : 30;
+  // Le « bloc produit » : nom + descriptif solidaires, dimensionnés sur leur texte.
+  const blocks: Blk[] = [
+    { h: tier === 'L' ? 3 : 2 },
+    { h: hero, el: (y, h) => heroBlock(l, o, m, y, h, red, tier) },
+    { h: tier === 'L' ? 6 : 4 },
+    ...fitBlk('product', d.product, tier === 'S' ? 17 : 14, asp, { x: 5, color: HDF.ink, weight: 900, lines: 2, floor: 0.02 }),
+  ];
+  if (tier !== 'S') blocks.push(
+    { h: 1.6 },
+    ...fitBlk('qty', d.qtyLabel, 4.5, asp, { x: 6, color: HDF.muted, weight: 600, italic: true, fill: 0.42 }),
+  );
+  // Respiration : c'est ici que se pose naturellement un logo de laboratoire ajouté à la main.
+  blocks.push({ flex: 1 });
+  if (m.price) {
+    blocks.push({ h: tier === 'L' ? 16 : 19, el: (y, h) => T('priceInt', eur(m.price), y, h, asp, { x: 3, color: red, weight: 900, nowrap: true, fill: 0.96, fitW: 0.86 }) });
+    if (m.old || m.note) blocks.push({ h: tier === 'L' ? 6.5 : 6, el: (y, h) => underPrice(m, y, h, asp) });
+  } else if (m.note) {
+    // Pas de prix (bon de réduction) : la zone prix ne reste pas vide — elle porte
+    // l'appel à l'action en rouge, sinon l'étiquette « tombe » et perd son équilibre.
+    blocks.push({ h: tier === 'L' ? 11 : 13, el: (y, h) => T('priceNote', m.note.toUpperCase(), y, h, asp, { x: 8, color: red, weight: 900, lines: 2, fill: 0.42, track: 0.02 }) });
   }
-  if (tag) out.push({ ...B, id: 'tag', kind: 'text', text: tag, x: 56, y: 7, w: 42, size: 0.07, color: DA.green, weight: 800, align: 'center', track: 0.1 });
-  out.push(...offiPrice(priceVal, asp, 18, 0.31, 0.18, 54, 45, DA.red));
-  if (oldTxt) out.push({ ...B, id: 'old', kind: 'text', text: oldTxt, x: 55, y: 53, w: 44, size: 0.085, color: '#9A8F6A', weight: 700, align: 'center', strike: true, strikeW: 0.04 });
-  if (disc) out.push(...offiSave(disc, asp, 60, 64, 36, 15, DA.red, '#fff'));
-  if (d.qtyLabel) out.push({ ...B, id: 'qty', kind: 'text', text: d.qtyLabel, x: 54, y: 82, w: 30, size: fitSize(d.qtyLabel, 0.28, asp, 0.06, 1, 0.04), color: DA.ink, weight: 600, align: 'center', italic: true });
-  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 4, y: 82, w: 13, size: 0, color: '#000', weight: 400, align: 'left' });
+  blocks.push({ flex: 0.65 });
+  // Pied : sur une mini étiquette, aucune mention — elle serait illisible et volerait de la place.
+  // Validité / mécanique : en encre, PAS en rouge. Le rouge n'appartient qu'à la promo et au
+  // prix ; un pied rouge crée un second point d'accroche qui affaiblit le premier.
+  if (urgency && tier !== 'S') blocks.push({ h: 4, el: (y, h) => T('urgency', urgency, y, h, asp, { x: 8, color: HDF.ink, weight: 700, fill: 0.5 }) });
+  if (o.disclaimer && tier === 'L') blocks.push({ h: 3.6, el: (y, h) => T('disc', o.disclaimer!, y, h, asp, { x: 9, color: HDF.muted, weight: 400, lines: 2, fill: 0.42 }) });
+  blocks.push({ h: tier === 'L' ? 2 : 1.5 });
+  const out = flow(blocks, 0, 100);
+  // Logo de l'officine : signature discrète en bas à gauche, jamais sur les petits formats.
+  if (o.logo && tier === 'L') out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 4, y: 90.5, w: 13, size: 0, color: '#000', weight: 400, align: 'left' });
   return out;
 }
 
+// ── RÉGLETTE (paysage, linéaire / balisage rayon) ─────────────────────
+// Même modèle basculé de 90° : le bloc rouge devient la colonne d'attaque à gauche
+// (sens de lecture), le produit et le prix occupent la colonne droite.
+function hdfReglette(l: Label, o: SeedOpts): El[] {
+  const d = l.data, asp = o.aspect || 2.5, red = l.accent || HDF.red;
+  const m = mechOf(l);
+  const dt = dateText(d, o);
+  const urgency = m.foot || dt || '';
+  const PW = 44;                       // largeur du panneau rouge
+  const cx = PW + 4, cw = 96 - cx;     // colonne de droite
+  const out: El[] = [{ ...B, id: 'hero', kind: 'box', x: 0, y: 0, w: PW, h: 100, bg: red, size: 0, color: red, weight: 400, align: 'left' }];
+  out.push(...flow([
+    { h: 9 },
+    { h: 14, el: (y, h) => T('cat', d.category, y, h, asp, { x: 4, w: PW - 8, color: HDF.white, weight: 800, track: 0.1, fill: 0.62, lines: 2 }) },
+    { h: 5, el: (y, h) => [{ ...B, id: 'rule', kind: 'box', x: 12, y: y + h / 2, w: PW - 24, h: 0.9, bg: HDF.rule, size: 0, color: HDF.rule, weight: 400, align: 'left' }] },
+    { flex: 1, el: (y, h) => T('mech', m.big, y, h, asp, { x: 3, w: PW - 6, color: HDF.white, weight: 900, nowrap: true, fill: 0.94, fitW: 0.78, floor: 0.05 }) },
+    { h: 15, el: (y, h) => T('mechSub', m.sub, y, h, asp, { x: 3, w: PW - 6, color: HDF.white, weight: 700, fill: 0.5, lines: 2 }) },
+    { h: 7 },
+  ], 0, 100));
+  const right: Blk[] = [
+    { h: 8 },
+    ...fitBlk('product', d.product, 25, asp, { x: cx, w: cw, color: HDF.ink, weight: 900, lines: 2, floor: 0.04 }),
+    { h: 2.5 },
+    ...fitBlk('qty', d.qtyLabel, 8, asp, { x: cx, w: cw, color: HDF.muted, weight: 600, italic: true, fill: 0.42 }),
+  ];
+  right.push({ flex: 1 });
+  if (m.price) {
+    right.push({ h: 29, el: (y, h) => T('priceInt', eur(m.price), y, h, asp, { x: cx, w: cw, color: red, weight: 900, nowrap: true, fill: 0.96, fitW: 0.86 }) });
+    if (m.old) right.push({ h: 12, el: (y, h) => [
+      ...T('oldLabel', 'Au lieu de', y, h, asp, { x: cx, w: cw * 0.46, align: 'right', color: HDF.ink, weight: 800, fill: 0.42 }),
+      ...T('old', m.old, y, h, asp, { x: cx + cw * 0.52, w: cw * 0.48, align: 'left', color: HDF.old, weight: 800, strike: true, strikeW: 0.07, fill: 0.62, nowrap: true }),
+    ] });
+    else if (m.note) right.push({ h: 10, el: (y, h) => T('priceNote', m.note, y, h, asp, { x: cx, w: cw, color: HDF.muted, weight: 700, italic: true, fill: 0.45 }) });
+  } else if (m.note) {
+    right.push({ h: 20, el: (y, h) => T('priceNote', m.note.toUpperCase(), y, h, asp, { x: cx, w: cw, color: red, weight: 900, lines: 2, fill: 0.34, track: 0.02 }) });
+  }
+  if (urgency) right.push({ h: 8, el: (y, h) => T('urgency', urgency, y, h, asp, { x: cx, w: cw, color: HDF.ink, weight: 700, fill: 0.42 }) });
+  right.push({ h: 5 });
+  out.push(...flow(right, 0, 100));
+  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: PW + 1, y: 81, w: 8, size: 0, color: '#000', weight: 400, align: 'left' });
+  return out;
+}
+
+// Un seul point d'entrée : la forme de l'étiquette choisit la déclinaison, jamais un « style ».
 function seedEls(l: Label, o: SeedOpts): El[] {
-  if (o.theme === 'officine') {
-    // Gabarit choisi selon la forme : paysage → réglette, petit → compact, sinon portrait.
-    if (o.landscape) return officineReglette(l, o);
-    if (o.small && l.type === 'prix-promo') return officineCompact(l, o);
-    return officineSeed(l, o);
-  }
-  // Thème Promo (jaune) : rendu responsive pour les cas que la mise en page portrait gère mal.
-  if (o.small && !o.landscape) return daCompact(l, o);                       // petits formats, tous types
-  if (o.landscape && l.type !== 'prix-promo') return daReglette(l, o);        // réglette bon/lot/multi
-  const a = l.accent, d = l.data;
-  const asp = o.aspect || 0.7;
-  // Aplat mat, centré : pas de point lumineux blanc, léger fondu vers le bord.
-  const circleBg = `radial-gradient(circle at 50% 50%, ${a} 58%, ${DA.red2})`;
-  const { normal, remise, pct } = priceParts(d.normalPrice, d.promoPrice);
-  // Remise affichée : € ou %, automatique ou saisie manuelle par l'utilisateur.
-  const manual = (d.remiseManual || '').trim();
-  const remiseTxt = d.remiseType === 'pct'
-    ? ((manual || pct) ? `-${manual || pct}%` : '')
-    : (manual ? `-${manual}€` : (remise ? `-${remise}€` : ''));
-
-  // ===== PRIX PROMO =====
-  if (l.type === 'prix-promo') {
-    if (o.landscape) {
-      // RÉGLETTE (paysage) — PROMOTION à gauche, cercle prix à droite
-      return [
-        { ...B, id: 'promo', kind: 'text', text: 'PROMOTION', x: 3, y: 6, size: 0.17, color: DA.promo, weight: 900, align: 'left' },
-        { ...B, id: 'band', kind: 'box', x: 3, y: 30, w: 54, h: 17, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left', radius: 4 },
-        { ...B, id: 'cat', kind: 'text', text: d.category, x: 3, y: 34, w: 54, size: fitSize(d.category, 0.5, asp, 0.072, 2, 0.04), color: '#fff', weight: 800, align: 'center' },
-        { ...B, id: 'product', kind: 'text', text: d.product, x: 3, y: 51, w: 55, size: fitSize(d.product, 0.55, asp, 0.082, 2, 0.045), color: '#16231A', weight: 900, align: 'left' },
-        ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 3, y: 71, w: 55, size: 0.058, color: DA.green, weight: 600, align: 'left' as Align }] : []),
-        // Cercle agrandi : occupe toute la hauteur de la réglette pour un impact maximal.
-        { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 59, y: 0, w: 40, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-        ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 59, y: 8, w: 40, size: 0.08, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
-        // Prix « charme » en bloc, maximisé dans le cercle agrandi.
-        ...offiPrice(d.promoPrice, asp, 29, 0.42, 0.24, 59, 40, DA.priceY, 0.46),
-        // Remise en blanc dans le bas du cercle (jamais confondue avec le prix jaune).
-        ...(remiseTxt ? [{ ...B, id: 'rem', kind: 'text' as ElKind, text: remiseTxt, x: 59, y: 80, w: 40, size: fitSize(remiseTxt, 0.36, asp, 0.08, 1, 0.05), color: '#fff', weight: 900, align: 'center' as Align }] : []),
-        ...footEls(l, o),
-      ];
-    }
-    // PORTRAIT — cercle prix (charme jaune, adaptatif), remise en pastille DISTINCTE, produit.
-    return [
-      { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 7, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
-      { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 1.7, w: 100, size: fitSize(d.category, 0.96, asp, 0.027, 1, 0.016), color: '#fff', weight: 800, align: 'center' },
-      // Cercle agrandi (héros maximal) — recentré horizontalement.
-      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 17, y: 8, w: 66, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      ...(normal > 0 ? [{ ...B, id: 'old', kind: 'text' as ElKind, text: eur(d.normalPrice), x: 17, y: 13, w: 66, size: 0.03, color: '#fff', weight: 700, align: 'center' as Align, strike: true }] : []),
-      // Prix « charme » maximisé et centré dans le cercle agrandi.
-      ...offiPrice(d.promoPrice, asp, 20, 0.25, 0.12, 20, 60, DA.priceY, 0.44),
-      // Remise = pastille rouge sous le cercle, jamais confondue avec le prix.
-      ...(remiseTxt ? offiSave(remiseTxt, asp, 27, 56, 46, 11, DA.red, '#fff') : []),
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 69, w: 90, size: fitSize(d.product, 0.9, asp, 0.05, 2, 0.026), color: '#16231A', weight: 900, align: 'center' },
-      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 80.5, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.028, 1, 0.02), color: DA.green, weight: 600, align: 'center' as Align }] : []),
-      ...footEls(l, o),
-    ];
-  }
-
-  // ===== Cadre commun (bandeau + pied) pour les autres types (portrait) =====
-  const frame: El[] = [
-    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: 7, bg: DA.band, size: 0, color: '#fff', weight: 400, align: 'left' },
-    { ...B, id: 'cat', kind: 'text', text: d.category, x: 0, y: 1.7, w: 100, size: 0.027, color: '#fff', weight: 800, align: 'center' },
-    ...footEls(l, { ...o, landscape: false }),
-  ];
-
-  // ===== BON DE RÉDUCTION =====
-  if (l.type === 'bon-reduction') {
-    return [
-      ...frame,
-      // Cercle harmonisé (même taille que prix-promo) + valeur du bon en bloc « charme ».
-      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 17, y: 8, w: 66, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      { ...B, id: 'btag', kind: 'text', text: 'BON DE RÉDUCTION', x: 17, y: 14, w: 66, size: fitSize('BON DE RÉDUCTION', 0.62, asp, 0.03, 1, 0.02), color: '#fff', weight: 800, align: 'center', track: 0.03 },
-      ...offiPrice(d.couponValue, asp, 22, 0.2, 0.11, 20, 60, DA.priceY, 0.44),
-      { ...B, id: 'bsub', kind: 'text', text: 'DE RÉDUCTION', x: 17, y: 46, w: 66, size: 0.03, color: '#fff', weight: 800, align: 'center', track: 0.06 },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 69, w: 90, size: fitSize(d.product, 0.9, asp, 0.052, 2, 0.028), color: '#16231A', weight: 900, align: 'center' },
-      { ...B, id: 'exp', kind: 'text', text: `Valable jusqu'au ${d.couponExpiry}`, x: 6, y: 80.5, w: 88, size: fitSize(`Valable jusqu'au ${d.couponExpiry}`, 0.88, asp, 0.035, 1, 0.022), color: DA.green, weight: 600, align: 'center' },
-    ];
-  }
-
-  // ===== REMISE LOT =====
-  if (l.type === 'remise-lot') {
-    const lv = lotView(d);
-    const lotn = lv.isPack ? `LOT DE ${lv.qty}` : `LOT ×${lv.qty}`;
-    const subl = lv.isPack
-      ? (lv.oldTxt ? `au lieu de ${lv.oldTxt}${lv.pct ? `  −${lv.pct}%` : ''}` : 'LE LOT')
-      : `${lv.paid} acheté${lv.paid > 1 ? 's' : ''} + ${lv.free} offert${lv.free > 1 ? 's' : ''}`;
-    return [
-      ...frame,
-      // Cercle harmonisé + prix du lot en bloc « charme » (fini le « 19 €98 » empilé).
-      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 17, y: 8, w: 66, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      { ...B, id: 'lotn', kind: 'text', text: lotn, x: 17, y: 14, w: 66, size: fitSize(lotn, 0.62, asp, 0.03, 1, 0.02), color: '#fff', weight: 800, align: 'center', track: 0.04 },
-      ...offiPrice(d.lotPrice, asp, 22, 0.2, 0.11, 20, 60, DA.priceY, 0.44),
-      { ...B, id: 'subl', kind: 'text', text: subl, x: 17, y: 46, w: 66, size: 0.03, color: '#fff', weight: 700, align: 'center' },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 5, y: 69, w: 90, size: fitSize(d.product, 0.9, asp, 0.052, 2, 0.03), color: '#16231A', weight: 900, align: 'center' },
-      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 80.5, w: 88, size: 0.034, color: DA.green, weight: 600, align: 'center' as Align }] : []),
-    ];
-  }
-
-  // ===== 2ᵉ PRODUIT À -X% (DA « Homme de Fer ») =====
-  if (l.type === 'remise-2eme') {
-    const { pct, unitTxt, lotTxt } = deux2(d);
-    return [
-      ...frame,
-      { ...B, id: 'circle', kind: 'box', shape: 'circle', x: 15, y: 8.5, w: 70, bg: circleBg, size: 0, color: a, weight: 400, align: 'left', shadow: true },
-      { ...B, id: 'unitp', kind: 'text', text: unitTxt, x: 15, y: 15, w: 70, size: fitSize(unitTxt, 0.5, asp, 0.03, 1, 0.02), color: '#fff', weight: 700, align: 'center', track: 0.03 },
-      { ...B, id: 'pct', kind: 'text', text: `-${pct}%`, x: 17, y: 19.5, w: 66, size: fitSize(`-${pct}%`, 0.58, asp, 0.17, 1, 0.11), color: DA.priceY, weight: 900, align: 'center' },
-      { ...B, id: 'divline', kind: 'box', x: 33, y: 41.5, w: 34, h: 0.5, bg: 'rgba(255,255,255,0.65)', size: 0, color: '#fff', weight: 400, align: 'left' },
-      { ...B, id: 'on2nd', kind: 'text', text: 'SUR LE DEUXIÈME PRODUIT', x: 18, y: 43.5, w: 64, size: fitSize('SUR LE DEUXIÈME PRODUIT', 0.58, asp, 0.026, 2, 0.018), color: '#fff', weight: 800, align: 'center', track: 0.02 },
-      { ...B, id: 'lot2', kind: 'text', text: lotTxt, x: 18, y: 52, w: 64, size: fitSize(lotTxt, 0.58, asp, 0.022, 1, 0.016), color: '#fff', weight: 600, align: 'center' },
-      { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 64, w: 88, size: fitSize(d.product, 0.88, asp, 0.05, 2, 0.026), color: '#16231A', weight: 900, align: 'center' },
-      ...(d.qtyLabel ? [{ ...B, id: 'qty', kind: 'text' as ElKind, text: d.qtyLabel, x: 6, y: 78, w: 88, size: fitSize(d.qtyLabel, 0.88, asp, 0.03, 1, 0.02), color: DA.green, weight: 600, align: 'center' as Align }] : []),
-    ];
-  }
-
-  // ===== MULTI-ACHAT =====
-  const cols = [{ q: d.t1q, p: d.t1p }, { q: d.t2q, p: d.t2p }, { q: d.t3q, p: d.t3p }];
-  const els: El[] = [
-    ...frame,
-    { ...B, id: 'mtitle', kind: 'text', text: 'OFFRE MULTI-ACHAT', x: 6, y: 11, w: 88, size: 0.048, color: DA.red, weight: 900, align: 'center' },
-    { ...B, id: 'product', kind: 'text', text: d.product, x: 6, y: 18, w: 88, size: fitSize(d.product, 0.88, asp, 0.055, 2, 0.032), color: DA.green, weight: 800, align: 'center' },
-  ];
-  // 3 cartes (qté + prix empilés) ; meilleur palier mis en avant (rouge + prix jaune).
-  cols.forEach((c, i) => {
-    const cx = 6 + i * 30, best = i === 2;
-    els.push({ ...B, id: `q${i}`, kind: 'box', x: cx, y: 34, w: 27, h: 30, bg: best ? DA.red : DA.band, size: 0, color: '#fff', weight: 400, align: 'center', radius: 12, shadow: best });
-    els.push({ ...B, id: `qt${i}`, kind: 'text', text: `${c.q} pce${parseInt(c.q) > 1 ? 's' : ''}`, x: cx, y: 38.5, w: 27, size: 0.032, color: '#fff', weight: 800, align: 'center' });
-    // Zone un peu plus large que la carte + taille prudente → le « € » ne passe jamais à la ligne.
-    els.push({ ...B, id: `p${i}`, kind: 'text', text: eur(c.p), x: cx - 1.5, y: 48, w: 30, size: fitSize(eur(c.p), 0.26, asp, 0.055, 1, 0.032), color: best ? DA.priceY : '#fff', weight: 900, align: 'center' });
-  });
-  els.push({ ...B, id: 'mfoot', kind: 'text', text: 'Plus vous achetez, plus vous économisez', x: 6, y: 70, w: 88, size: fitSize('Plus vous achetez, plus vous économisez', 0.88, asp, 0.034, 1, 0.022), color: DA.green, weight: 600, align: 'center' });
-  return els;
+  return o.landscape ? hdfReglette(l, o) : hdfPortrait(l, o);
 }
-
 const FULL: SeedOpts = { landscape: false, logo: 'x', disclaimer: 'x' };
 function resolveEls(l: Label, o: SeedOpts): El[] {
   const bound = seedEls(l, o).map(e => ({ ...e, ...l.overrides[e.id] }));
   return [...bound, ...l.extra];
 }
+// « Ce bloc appartient-il au modèle ? » — on interroge les déclinaisons du modèle
+// (affiche, rayon, mini, réglette) : un bloc du modèle se masque, un bloc ajouté se supprime.
+const VARIANTS: SeedOpts[] = [
+  { ...FULL, landscape: false, minMm: 210 },
+  { ...FULL, landscape: false, minMm: 63 },
+  { ...FULL, landscape: false, minMm: 48 },
+  { ...FULL, landscape: true, minMm: 80, aspect: 2.5 },
+];
 function isBound(l: Label, id: string): boolean {
-  for (const theme of ['promo', 'officine']) for (const landscape of [false, true]) {
-    if (seedEls(l, { ...FULL, landscape, theme }).some(e => e.id === id)) return true;
-  }
-  return false;
+  return VARIANTS.some(o => seedEls(l, o).some(e => e.id === id));
 }
 
 function renderEl(e: El, H: number): CSSProperties {
@@ -801,7 +604,8 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
   return (
     <div data-labelbox onClick={(ev) => { ev.stopPropagation(); onSelectLabel(); }}
       style={{ position: 'relative', width: W, height: H, background: bg, border: editing ? `1px solid ${selectedLabel ? selColor : 'rgba(0,0,0,0.08)'}` : 'none', borderRadius: editing ? 6 : 0, overflow: 'hidden', cursor: editing ? 'pointer' : 'default', boxShadow: selectedLabel && editing ? `0 0 0 3px ${selColor}44` : 'none', flexShrink: 0, boxSizing: 'border-box' }}>
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: WATERMARK, backgroundSize: `${Math.max(46, W * 0.1)}px ${Math.max(46, W * 0.1)}px`, opacity: 0.4, pointerEvents: 'none' }} />
+      {/* Papier BLANC pur, sans filigrane : à 3 mètres, tout motif de fond salit le blanc
+          et affaiblit le contraste du bloc rouge — la propreté du fond fait partie du modèle. */}
       {/* Repères d'alignement : axes central vertical + horizontal (aide au centrage).
           Affichés sur l'étiquette sélectionnée ; mis en évidence (couleur) quand le bloc s'aimante au centre. */}
       {editing && selectedLabel && <>
@@ -844,7 +648,7 @@ export const sizeOf = (l: Label, p: Project) => ({ w: l.wMm ?? p.labelWmm, h: l.
 // Options de composition (orientation, format…) calculées pour CETTE étiquette.
 export const optsFor = (l: Label, p: Project, editing: boolean): SeedOpts => {
   const { w, h } = sizeOf(l, p);
-  return { landscape: w > h * 1.5, logo: p.logo, disclaimer: p.disclaimer, editing, small: Math.min(w, h) < 80, aspect: w / h, theme: p.theme || 'promo', dateStart: p.dateStart, dateEnd: p.dateEnd };
+  return { landscape: w > h * 1.5, logo: p.logo, disclaimer: p.disclaimer, editing, small: Math.min(w, h) < 80, aspect: w / h, minMm: Math.min(w, h), dateStart: p.dateStart, dateEnd: p.dateEnd };
 };
 
 function layout(p: Project) {
@@ -1040,7 +844,7 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
     </>)}
     {el.kind === 'box' && (() => {
       const outline = !el.bg || el.bg === 'transparent';
-      const curCol = (el.bg && el.bg.startsWith('#')) ? el.bg : (el.border?.match(/#[0-9a-fA-F]{3,6}/)?.[0] || '#0E7A4D');
+      const curCol = (el.bg && el.bg.startsWith('#')) ? el.bg : (el.border?.match(/#[0-9a-fA-F]{3,6}/)?.[0] || HDF.red);
       const setCol = (c: string) => outline ? patch({ bg: 'transparent', border: `3px solid ${c}` }) : patch({ bg: c, border: undefined });
       const tg = (on: boolean): CSSProperties => ({ flex: 1, padding: '6px', background: on ? '#16a34a' : '#1e293b', color: on ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700 });
       return (<>
@@ -1053,7 +857,7 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
         <Field label="Couleur">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
             {TEXT_COLORS.map(c => { const on = curCol.toLowerCase() === c.toLowerCase(); return <button key={c} onClick={() => setCol(c)} title={c} style={{ width: 24, height: 24, borderRadius: 5, background: c, border: on ? '2px solid #16a34a' : '1px solid #475569', cursor: 'pointer', padding: 0, boxShadow: on ? '0 0 0 2px #16a34a55' : 'none' }} />; })}
-            <input type="color" value={curCol.length === 7 ? curCol : '#0E7A4D'} onChange={e => setCol(e.target.value)} style={{ width: 26, height: 24, border: '1px solid #475569', borderRadius: 5, background: 'none', cursor: 'pointer', padding: 2 }} title="Couleur personnalisée" />
+            <input type="color" value={curCol.length === 7 ? curCol : HDF.red} onChange={e => setCol(e.target.value)} style={{ width: 26, height: 24, border: '1px solid #475569', borderRadius: 5, background: 'none', cursor: 'pointer', padding: 2 }} title="Couleur personnalisée" />
           </div>
         </Field>
         <Slider label={el.shape === 'circle' ? 'Diamètre' : 'Largeur'} value={Math.round(el.w || 20)} min={1} max={100} step={1} suffix="%" onChange={v => patch({ w: v })} />
@@ -1662,10 +1466,8 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     const flip = (p.labelWmm > p.labelHmm * 1.5) !== (w > h * 1.5);
     return { ...p, labelWmm: w, labelHmm: h, labels: flip ? p.labels.map(l => ({ ...l, overrides: {} })) : p.labels };
   });
-  // Changement de style : on repart des positions par défaut (compositions différentes).
-  const setTheme = (t: string) => setProject(p => p.theme === t ? p : ({ ...p, theme: t, labels: p.labels.map(l => ({ ...l, overrides: {} })) }));
   const current = project.labels.find(l => l.id === selLabel) || null;
-  const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true, small: L.small, aspect: project.labelWmm / project.labelHmm, theme: project.theme || 'promo', dateStart: project.dateStart, dateEnd: project.dateEnd };
+  const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true, small: L.small, aspect: project.labelWmm / project.labelHmm, minMm: Math.min(project.labelWmm, project.labelHmm), dateStart: project.dateStart, dateEnd: project.dateEnd };
   const currentEl: El | null = current && selEl ? resolveEls(current, seedOpts).find(e => e.id === selEl) || null : null;
   const overflow = project.labels.length > L.capacity;
 
@@ -1676,7 +1478,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   // — fini la désynchro « le panneau dit X, l'étiquette dit Y ». Les autres blocs (badge remise,
   // « LOT DE 3 », mentions, textes ajoutés) restent du texte libre (override).
   const EL_TO_FIELD: Partial<Record<string, keyof LabelData>> = { product: 'product', cat: 'category', qty: 'qtyLabel' };
-  const FIELD_TO_ELS: Partial<Record<keyof LabelData, string[]>> = { product: ['product'], category: ['cat'], qtyLabel: ['qty'], promoPrice: ['priceInt', 'priceDec'], normalPrice: ['old'] };
+  const FIELD_TO_ELS: Partial<Record<keyof LabelData, string[]>> = { product: ['product'], category: ['cat'], qtyLabel: ['qty'], promoPrice: ['priceInt'], normalPrice: ['old'] };
   const stripText = (overrides: Record<string, Partial<El>>, ids: string[]) => {
     let ov = overrides;
     for (const id of ids) if (ov[id] && 'text' in ov[id]) { const o = { ...ov[id] }; delete o.text; ov = { ...ov, [id]: o }; }
@@ -1687,10 +1489,10 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   // Réécriture d'un bloc SUR l'étiquette (double-clic) : routée vers la donnée si le bloc est du « contenu ».
   const commitText = (id: string, t: string) => {
     if (!current) return;
-    if (id === 'priceInt' || id === 'priceDec') { // prix édité en un bloc « 9,50 € »
+    if (id === 'priceInt') { // prix édité en un bloc « 9,50 € »
       const raw = (t || '').trim(); const n = pf(raw);
       if (n > 0 || /^0([.,]\d+)?\s*€?$/.test(raw)) setData('promoPrice', ff(n)); // numérique → recalcule barré + remise
-      else { patchElById('priceInt', { text: raw }); patchElById('priceDec', { text: '' }); } // texte libre
+      else patchElById('priceInt', { text: raw }); // texte libre
       return;
     }
     if (id === 'old') { const n = pf(t); if (n > 0) { setData('normalPrice', ff(n)); return; } }
@@ -1699,6 +1501,10 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     patchElById(id, { text: t }); // badge, « LOT DE 3 », mentions, blocs ajoutés → texte libre
   };
   const patchEl = (patch: Partial<El>) => { if (selEl) patchElById(selEl, patch); };
+  // « Revenir au modèle » : efface retouches, blocs ajoutés et couleurs personnalisées.
+  // Indispensable quand tout est normé : un plan promo doit pouvoir être remis d'aplomb en un clic.
+  const resetToModel = () => { if (!current) return; updateLabel(current.id, l => ({ ...l, overrides: {}, extra: [], accent: HDF.red, bg: HDF.paper })); setSelEl(null); };
+  const resetAllToModel = () => setProject(p => ({ ...p, labels: p.labels.map(l => ({ ...l, overrides: {}, extra: [], accent: HDF.red, bg: HDF.paper })) }));
   // Supprimer un bloc : les blocs ajoutés sont retirés, les blocs du modèle sont masqués (réversible).
   const delEl = (id: string) => { if (!current) return; updateLabel(current.id, l => isBound(l, id) ? { ...l, overrides: { ...l.overrides, [id]: { ...l.overrides[id], hidden: true } } } : { ...l, extra: l.extra.filter(e => e.id !== id) }); if (selEl === id) setSelEl(null); };
   // Ajout d'un bloc de texte libre, déplaçable / redimensionnable / supprimable.
@@ -1706,7 +1512,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const addTextBlock = (labelId?: string, x = 18, y = 45) => {
     const target = labelId ? project.labels.find(l => l.id === labelId) : (current || project.labels[project.labels.length - 1]);
     if (!target) return;
-    const e: El = { id: 't' + uid(), kind: 'text', text: 'Nouveau texte', x, y, w: 64, size: 0.05, font: SYS, color: '#21392B', weight: 700, align: 'center', rot: 0, removable: true };
+    const e: El = { id: 't' + uid(), kind: 'text', text: 'Nouveau texte', x, y, w: 64, size: 0.05, font: SYS, color: HDF.ink, weight: 700, align: 'center', rot: 0, removable: true };
     updateLabel(target.id, l => ({ ...l, extra: [...l.extra, e] }));
     setSelLabel(target.id); setSelEl(e.id); setEditId(e.id);
     if (isMobile) setPanelOpen(true);
@@ -1716,7 +1522,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     const target = current || project.labels[project.labels.length - 1];
     if (!target) return;
     const asp = project.labelWmm / project.labelHmm;
-    const base = { id: 's' + uid(), kind: 'box' as ElKind, size: 0, font: SYS, color: '#0E7A4D', weight: 400, align: 'left' as Align, rot: 0, removable: true, bg: '#0E7A4D' };
+    const base = { id: 's' + uid(), kind: 'box' as ElKind, size: 0, font: SYS, color: HDF.red, weight: 400, align: 'left' as Align, rot: 0, removable: true, bg: HDF.red };
     let e: El;
     if (shape === 'circle') e = { ...base, x: 38, y: 38, w: 24, shape: 'circle' };
     else if (shape === 'line') e = { ...base, x: 25, y: 50, w: 50, h: 0.8, radius: 999 };
@@ -1815,9 +1621,6 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
               <button onClick={() => setShowImport(true)} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>⬆ Importer</button>
               <button onClick={addLabel} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Étiquette</button>
               <button onClick={() => addTextBlock()} title="Ajouter un bloc de texte (ou double-cliquez sur l'étiquette)" style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Texte</button>
-              <div style={{ display: 'flex', gap: 3, border: '1px solid #334155', borderRadius: 7, padding: 2 }} title="Style d'étiquette (non destructif)">
-                {[{ id: 'promo', t: '🏷️ Promo', c: '#D4A017' }, { id: 'officine', t: '✚ Officine', c: '#0E7A4D' }].map(th => { const on = (project.theme || 'promo') === th.id; return <button key={th.id} onClick={() => setTheme(th.id)} style={{ padding: '4px 9px', background: on ? th.c : 'transparent', color: on ? '#fff' : '#94a3b8', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{th.t}</button>; })}
-              </div>
               <button onClick={() => setShowPreview(true)} style={{ padding: '7px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 800, boxShadow: '0 2px 10px #16a34a66' }}>🖨 Imprimer / PDF</button>
             </div>
           </div>
@@ -1893,7 +1696,13 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                   {project.labels.length > 1 && <button onClick={applyFormatToAll} style={{ width: '100%', marginTop: 6, padding: '6px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>↪ Appliquer ce format aux {project.labels.length} étiquettes</button>}
                 </Field>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}><SectionTitle>Contenu</SectionTitle><ContentForm l={current} set={setData} /></div>
-                <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}><SectionTitle>Couleurs</SectionTitle><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><ColorRow label="Cercle / accent" value={current.accent} onChange={setAccent} /><ColorRow label="Fond" value={current.bg} onChange={setBg} /></div></div>
+                <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
+                  <SectionTitle>Couleurs du modèle</SectionTitle>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><ColorRow label="Rouge promo" value={current.accent} onChange={setAccent} /><ColorRow label="Papier" value={current.bg} onChange={setBg} /></div>
+                  <button onClick={resetToModel} style={{ width: '100%', padding: '7px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>↺ Revenir au modèle (annule retouches et couleurs)</button>
+                  {project.labels.length > 1 && <button onClick={resetAllToModel} style={{ width: '100%', marginTop: 6, padding: '7px', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>↺ Renormer les {project.labels.length} étiquettes</button>}
+                  <div style={{ fontSize: 10, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>Le rouge est la seule couleur d&apos;accent : il ne sert qu&apos;à la promotion et au prix. Le garder identique sur tout le plan promo est ce qui rend le linéaire lisible.</div>
+                </div>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12 }}>
                   <SectionTitle>Blocs présents</SectionTitle>
                   {hiddenCount > 0 && <button onClick={restoreHidden} style={{ width: '100%', padding: '7px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>↺ Réafficher {hiddenCount} bloc{hiddenCount > 1 ? 's' : ''} masqué{hiddenCount > 1 ? 's' : ''}</button>}

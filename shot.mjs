@@ -13,9 +13,7 @@ for (let i = 0; i < 40; i++) {
 if (!ok) { console.log('serveur injoignable'); await browser.close(); process.exit(1); }
 await page.waitForTimeout(2000); // polices + rendu
 await page.screenshot({ path: OUT + 'audit-preview-full.png', fullPage: true });
-for (const theme of ['promo', 'officine']) {
-  const el = await page.$(`[data-theme="${theme}"]`);
-  if (el) await el.screenshot({ path: OUT + `audit-${theme}.png` });
-}
+const el = await page.$('[data-theme="hdf"]');
+if (el) await el.screenshot({ path: OUT + 'audit-modele.png' });
 await browser.close();
 console.log('captures OK');
