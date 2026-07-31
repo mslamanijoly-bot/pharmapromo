@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, CSSProperties } from 'react';
-import { MM, pf, ff, fr, fitSize, priceParts, parseTable, paginate, chunk, stackColumnBlocks, splitSize } from '@/lib/calc';
+import { MM, pf, ff, fr, fitSize, priceParts, parseTable, paginate, chunk, stackColumnBlocks, splitSize, cycleInfo, cycleOf, shiftCycle } from '@/lib/calc';
 
 /* ════════════════════════════════════════════════════════════════════
    PHARMAPROMO STUDIO
@@ -22,7 +22,7 @@ interface El {
   x: number; y: number; w?: number; h?: number;
   size: number; font: string; color: string; bg?: string;
   weight: number; align: Align; rot: number;
-  strike?: boolean; strikeW?: number; radius?: number; shape?: 'circle'; shadow?: boolean; border?: string;
+  strike?: boolean; strikeW?: number; radius?: number; shape?: 'circle' | 'arrow' | 'arrow-r'; shadow?: boolean; border?: string;
   track?: number; italic?: boolean; nowrap?: boolean;
   hidden?: boolean; removable?: boolean;
 }
@@ -44,6 +44,7 @@ export interface Project {
   pageFormat: string; labelWmm: number; labelHmm: number;
   printPaper?: string; printMarginMm?: number; theme?: string;
   dateStart?: string; dateEnd?: string;
+  cycle?: string;   // « AAAA-MM-1 » / « AAAA-MM-15 » — cycle promo de 15 jours (cf. cycleInfo)
   labels: Label[]; updatedAt?: number;
 }
 
@@ -56,7 +57,7 @@ const PAPERS: Record<string, { name: string; w: number; h: number }> = {
 interface Meta { id: string; pharmacy: string; plan: string; updatedAt: number; }
 // `minMm` = plus petit côté de l'étiquette : c'est lui qui décide du palier de composition
 // (affiche / rayon / mini), donc de ce que l'on garde ou sacrifie sur une petite surface.
-interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; aspect?: number; minMm?: number; dateStart?: string; dateEnd?: string; }
+interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: string; editing?: boolean; small?: boolean; aspect?: number; minMm?: number; dateStart?: string; dateEnd?: string; cycleTag?: string; }
 
 // ──────────────────────────────────────────────────────────────────────
 //  DIRECTION ARTISTIQUE — MODÈLE UNIQUE « HOMME DE FER »
@@ -73,13 +74,19 @@ interface SeedOpts { landscape: boolean; logo?: string | null; disclaimer?: stri
 // tout le reste est blanc / ardoise. C'est ce contraste unique qui fait vendre.
 const HDF = {
   paper: '#FFFFFF',
-  red: '#E8334A',     // rouge promo (bloc accroche + prix)
+  green: '#0E7A4D',   // vert pharmacie — identité : bandeau univers + pastille de cycle
+  red: '#E8334A',     // rouge promo — déclencheur : flèche + prix, et rien d'autre
   ink: '#2E3B4E',     // nom du produit — bleu ardoise très foncé
   old: '#3E4A5A',     // ancien prix barré
   muted: '#79858F',   // descriptif, mentions
   white: '#FFFFFF',
-  rule: 'rgba(255,255,255,0.9)',
 };
+
+// Géométrie de la flèche. `ARROW_TIP` = part de la hauteur (ou de la largeur) mangée par
+// la pointe : le texte doit rester en deçà, sinon le biseau le rogne.
+const ARROW_TIP = 0.22;
+const ARROW_DOWN = `polygon(0 0, 100% 0, 100% ${100 - ARROW_TIP * 100}%, 50% 100%, 0 ${100 - ARROW_TIP * 100}%)`;
+const ARROW_RIGHT = `polygon(0 0, ${100 - ARROW_TIP * 100}% 0, 100% 50%, ${100 - ARROW_TIP * 100}% 100%, 0 100%)`;
 
 const TYPES: { id: PromoType; label: string; icon: string; color: string }[] = [
   { id: 'prix-promo',    label: 'Prix Promo',       icon: '🏷️', color: '#D81E27' },
@@ -375,23 +382,56 @@ function mechOf(l: Label): Mech {
   };
 }
 
-// ── Le bloc rouge (l'accroche) ────────────────────────────────────────
-// Surtitre univers · filet · DÉCLENCHEUR · précision. Le déclencheur prend toute la
-// place restante : c'est lui qui arrête le client dans l'allée.
+// ── L'accroche : bandeau VERT (identité) puis flèche ROUGE (le déclencheur) ──────
+// Le vert installe la pharmacie et nomme l'univers ; le rouge, en flèche, ne dit qu'une
+// chose — l'offre — et sa pointe conduit l'œil vers le produit et le prix. Deux couleurs,
+// deux rôles : c'est ce partage strict qui rend un linéaire lisible.
+// La proportion (bandeau ≈ 1/5, flèche ≈ 4/5) est constante à tous les formats.
 function heroBlock(l: Label, o: SeedOpts, m: Mech, y0: number, h: number, red: string, tier: Tier): El[] {
   const d = l.data, asp = o.aspect || 0.7;
   const pad = tier === 'L' ? 3 : 2;
-  const box: El = { ...B, id: 'hero', kind: 'box', x: pad, y: y0, w: 100 - 2 * pad, h, bg: red, size: 0, color: red, weight: 400, align: 'left' };
-  const full = tier !== 'S';   // en mini, le surtitre et le filet sautent : place au chiffre
-  const inner = flow([
-    { h: h * 0.09 },
-    ...(full ? [{ h: h * 0.13, el: (y: number, hh: number) => T('cat', d.category, y, hh, asp, { x: pad + 5, color: HDF.white, weight: 800, track: 0.16, fill: 0.66 }) }] : []),
-    ...(full ? [{ h: h * 0.06, el: (y: number, hh: number) => [{ ...B, id: 'rule', kind: 'box' as ElKind, x: 34, y: y + hh / 2, w: 32, h: Math.max(0.22, h * 0.014), bg: HDF.rule, size: 0, color: HDF.rule, weight: 400, align: 'left' as Align }] }] : []),
-    { flex: 1, el: (y: number, hh: number) => T('mech', m.big, y, hh, asp, { x: pad + 3, color: HDF.white, weight: 900, nowrap: true, fill: 0.94, fitW: 0.78, floor: 0.03 }) },
-    ...(m.sub && full ? [{ h: h * 0.15, el: (y: number, hh: number) => T('mechSub', m.sub, y, hh, asp, { x: pad + 4, color: HDF.white, weight: 700, fill: 0.6 }) }] : []),
-    { h: h * (full ? 0.09 : 0.06) },
-  ], y0, h);
-  return [box, ...inner];
+  // En mini (48×45), le bandeau catégorie saute : à cette taille il serait illisible, et
+  // le client est déjà devant le rayon — l'univers n'a plus rien à lui apprendre.
+  const band = tier === 'S' ? 0 : h * 0.22, gap = tier === 'S' ? 0 : h * 0.05;
+  const ah = h - band - gap;                   // hauteur de la flèche
+  const out: El[] = [];
+  if (band > 0) {
+    out.push({ ...B, id: 'band', kind: 'box', x: 0, y: y0, w: 100, h: band, bg: HDF.green, size: 0, color: HDF.green, weight: 400, align: 'left' });
+    out.push(...T('cat', d.category, y0, band, asp, { x: 5, color: HDF.white, weight: 800, track: 0.16, fill: 0.42 }));
+  }
+  const ay = y0 + band + gap;
+  out.push({ ...B, id: 'hero', kind: 'box', shape: 'arrow', x: pad, y: ay, w: 100 - 2 * pad, h: ah, bg: red, size: 0, color: red, weight: 400, align: 'left' });
+  // Le texte reste au-dessus de la pointe (ARROW_TIP), sinon il serait rogné par le biseau.
+  // Chiffre et précision forment UN groupe, centré d'un bloc : sinon, dès que le chiffre est
+  // limité par la largeur (« +1 OFFERT »), la précision se décrochait tout en bas.
+  const body = ah * (1 - ARROW_TIP);
+  out.push(...flow([
+    { flex: 1 },
+    ...fitBlk('mech', m.big, body * 0.74, asp, { x: pad + 3, color: HDF.white, weight: 900, nowrap: true, fill: 0.98, fitW: 0.78, floor: 0.03 }),
+    { h: body * 0.05 },
+    ...fitBlk('mechSub', m.sub, body * 0.2, asp, { x: pad + 6, color: HDF.white, weight: 700, fill: 0.7 }),
+    { flex: 1.25 },
+  ], ay, body));
+  return out;
+}
+
+// ── La pastille de cycle ──────────────────────────────────────────────
+// Le plan promo tourne tous les 15 jours. Cette pastille verte dit à quel cycle
+// appartient l'étiquette : en un passage dans l'allée, on repère celles qui datent
+// du cycle précédent et qu'on a oublié de changer. C'est le DERNIER élément qu'on
+// sacrifie en petit format — c'est un outil de travail, pas une décoration.
+function cycleTag(txt: string, y: number, slot: number, asp: number, x0 = 0, w0 = 100): El[] {
+  const t = (txt || '').trim();
+  if (!t || slot <= 0) return [];
+  const opt: TOpt = { x: x0, w: w0, color: HDF.white, weight: 800, track: 0.06, fill: 0.46 };
+  const mm = measure(t, slot, asp, opt);
+  // Largeur de la pastille = largeur réelle du texte (en % de la largeur d'étiquette) + marges.
+  const tw = Math.min(w0, (0.62 * 1.06 * t.length * mm.size * 100) / asp + 5);
+  const bh = Math.min(slot, mm.h * 2.1);
+  return [
+    { ...B, id: 'cycleBox', kind: 'box', x: x0 + (w0 - tw) / 2, y: y + (slot - bh) / 2, w: tw, h: bh, bg: HDF.green, radius: 999, size: 0, color: HDF.green, weight: 400, align: 'left' },
+    ...T('cycle', t, y, slot, asp, opt),
+  ];
 }
 
 // La ligne sous le prix : « Au lieu de 31,90 € » (la preuve), sinon la nature du prix.
@@ -407,10 +447,13 @@ function underPrice(m: Mech, y: number, h: number, asp: number): El[] {
 function hdfPortrait(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 0.7, red = l.accent || HDF.red, tier = tierOf(o);
   const m = mechOf(l);
-  const dt = dateText(d, o);
+  // Quand la planche porte un cycle, la pastille dit déjà la période : répéter les dates
+  // en clair ne ferait que charger le pied. Exception : une étiquette qui porte SES PROPRES
+  // dates fait exception au cycle — il faut alors les écrire, la pastille ne les dit pas.
+  const dt = (!o.cycleTag || d.dateStart || d.dateEnd) ? dateText(d, o) : null;
   // Ligne de pied : la mécanique détaillée prime sur la validité, qui prime sur la mention stocks.
   const urgency = m.foot || dt || (tier === 'L' ? 'Offre dans la limite des stocks disponibles' : '');
-  const hero = tier === 'L' ? 33 : tier === 'M' ? 31 : 30;
+  const hero = tier === 'L' ? 38 : tier === 'M' ? 37 : 33;
   // Le « bloc produit » : nom + descriptif solidaires, dimensionnés sur leur texte.
   const blocks: Blk[] = [
     { h: tier === 'L' ? 3 : 2 },
@@ -437,6 +480,9 @@ function hdfPortrait(l: Label, o: SeedOpts): El[] {
   // Validité / mécanique : en encre, PAS en rouge. Le rouge n'appartient qu'à la promo et au
   // prix ; un pied rouge crée un second point d'accroche qui affaiblit le premier.
   if (urgency && tier !== 'S') blocks.push({ h: 4, el: (y, h) => T('urgency', urgency, y, h, asp, { x: 8, color: HDF.ink, weight: 700, fill: 0.5 }) });
+  // La pastille de cycle survit à tous les formats, y compris la mini : c'est elle qui
+  // permet de retirer les étiquettes périmées lors de la rotation des 15 jours.
+  if (o.cycleTag) blocks.push({ h: 1 }, { h: tier === 'L' ? 4.4 : 6, el: (y, h) => cycleTag(o.cycleTag!, y, h, asp) });
   if (o.disclaimer && tier === 'L') blocks.push({ h: 3.6, el: (y, h) => T('disc', o.disclaimer!, y, h, asp, { x: 9, color: HDF.muted, weight: 400, lines: 2, fill: 0.42 }) });
   blocks.push({ h: tier === 'L' ? 2 : 1.5 });
   const out = flow(blocks, 0, 100);
@@ -446,34 +492,40 @@ function hdfPortrait(l: Label, o: SeedOpts): El[] {
 }
 
 // ── RÉGLETTE (paysage, linéaire / balisage rayon) ─────────────────────
-// Même modèle basculé de 90° : le bloc rouge devient la colonne d'attaque à gauche
-// (sens de lecture), le produit et le prix occupent la colonne droite.
+// Même modèle basculé de 90° : bandeau vert en tête, puis la flèche rouge à gauche —
+// sa pointe désigne le produit et le prix, dans le sens de lecture.
 function hdfReglette(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 2.5, red = l.accent || HDF.red;
   const m = mechOf(l);
-  const dt = dateText(d, o);
+  const dt = (!o.cycleTag || d.dateStart || d.dateEnd) ? dateText(d, o) : null;
   const urgency = m.foot || dt || '';
-  const PW = 44;                       // largeur du panneau rouge
-  const cx = PW + 4, cw = 96 - cx;     // colonne de droite
-  const out: El[] = [{ ...B, id: 'hero', kind: 'box', x: 0, y: 0, w: PW, h: 100, bg: red, size: 0, color: red, weight: 400, align: 'left' }];
+  const BAND = 17;                     // bandeau vert (identité + univers)
+  const AW = 42;                       // largeur de la flèche rouge
+  const cx = AW + 4, cw = 96 - cx;     // colonne de droite
+  const out: El[] = [
+    { ...B, id: 'band', kind: 'box', x: 0, y: 0, w: 100, h: BAND, bg: HDF.green, size: 0, color: HDF.green, weight: 400, align: 'left' },
+    ...T('cat', d.category, 0, BAND, asp, { x: 4, color: HDF.white, weight: 800, track: 0.12, fill: 0.42 }),
+    { ...B, id: 'hero', kind: 'box', shape: 'arrow-r', x: 0, y: BAND + 2, w: AW, h: 98 - BAND, bg: red, size: 0, color: red, weight: 400, align: 'left' },
+  ];
+  // Le texte reste à gauche de la pointe, sinon le biseau le rogne.
+  const bw = AW * (1 - ARROW_TIP), ah = 98 - BAND;
   out.push(...flow([
-    { h: 9 },
-    { h: 14, el: (y, h) => T('cat', d.category, y, h, asp, { x: 4, w: PW - 8, color: HDF.white, weight: 800, track: 0.1, fill: 0.62, lines: 2 }) },
-    { h: 5, el: (y, h) => [{ ...B, id: 'rule', kind: 'box', x: 12, y: y + h / 2, w: PW - 24, h: 0.9, bg: HDF.rule, size: 0, color: HDF.rule, weight: 400, align: 'left' }] },
-    { flex: 1, el: (y, h) => T('mech', m.big, y, h, asp, { x: 3, w: PW - 6, color: HDF.white, weight: 900, nowrap: true, fill: 0.94, fitW: 0.78, floor: 0.05 }) },
-    { h: 15, el: (y, h) => T('mechSub', m.sub, y, h, asp, { x: 3, w: PW - 6, color: HDF.white, weight: 700, fill: 0.5, lines: 2 }) },
-    { h: 7 },
-  ], 0, 100));
+    { flex: 1 },
+    ...fitBlk('mech', m.big, ah * 0.5, asp, { x: 3, w: bw - 5, color: HDF.white, weight: 900, nowrap: true, fill: 0.98, fitW: 0.8, floor: 0.05 }),
+    { h: ah * 0.05 },
+    ...fitBlk('mechSub', m.sub, ah * 0.16, asp, { x: 3, w: bw - 5, color: HDF.white, weight: 700, fill: 0.62, lines: 2 }),
+    { flex: 1 },
+  ], BAND + 2, ah));
   const right: Blk[] = [
-    { h: 8 },
+    { h: BAND + 4 },
     ...fitBlk('product', d.product, 25, asp, { x: cx, w: cw, color: HDF.ink, weight: 900, lines: 2, floor: 0.04 }),
     { h: 2.5 },
     ...fitBlk('qty', d.qtyLabel, 8, asp, { x: cx, w: cw, color: HDF.muted, weight: 600, italic: true, fill: 0.42 }),
   ];
   right.push({ flex: 1 });
   if (m.price) {
-    right.push({ h: 29, el: (y, h) => T('priceInt', eur(m.price), y, h, asp, { x: cx, w: cw, color: red, weight: 900, nowrap: true, fill: 0.96, fitW: 0.86 }) });
-    if (m.old) right.push({ h: 12, el: (y, h) => [
+    right.push({ h: 26, el: (y, h) => T('priceInt', eur(m.price), y, h, asp, { x: cx, w: cw, color: red, weight: 900, nowrap: true, fill: 0.96, fitW: 0.86 }) });
+    if (m.old) right.push({ h: 11, el: (y, h) => [
       ...T('oldLabel', 'Au lieu de', y, h, asp, { x: cx, w: cw * 0.46, align: 'right', color: HDF.ink, weight: 800, fill: 0.42 }),
       ...T('old', m.old, y, h, asp, { x: cx + cw * 0.52, w: cw * 0.48, align: 'left', color: HDF.old, weight: 800, strike: true, strikeW: 0.07, fill: 0.62, nowrap: true }),
     ] });
@@ -481,10 +533,12 @@ function hdfReglette(l: Label, o: SeedOpts): El[] {
   } else if (m.note) {
     right.push({ h: 20, el: (y, h) => T('priceNote', m.note.toUpperCase(), y, h, asp, { x: cx, w: cw, color: red, weight: 900, lines: 2, fill: 0.34, track: 0.02 }) });
   }
-  if (urgency) right.push({ h: 8, el: (y, h) => T('urgency', urgency, y, h, asp, { x: cx, w: cw, color: HDF.ink, weight: 700, fill: 0.42 }) });
-  right.push({ h: 5 });
+  if (urgency) right.push({ h: 6.5, el: (y, h) => T('urgency', urgency, y, h, asp, { x: cx, w: cw, color: HDF.ink, weight: 700, fill: 0.42 }) });
+  // Pastille de cycle : en bas de la colonne de droite (la flèche occupe toute la gauche).
+  if (o.cycleTag) right.push({ h: 1.5 }, { h: 9, el: (y, h) => cycleTag(o.cycleTag!, y, h, asp, cx, cw) });
+  right.push({ h: 3 });
   out.push(...flow(right, 0, 100));
-  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: PW + 1, y: 81, w: 8, size: 0, color: '#000', weight: 400, align: 'left' });
+  if (o.logo) out.push({ ...B, id: 'plogo', kind: 'image', src: o.logo, x: 2, y: 84, w: 7, size: 0, color: '#000', weight: 400, align: 'left' });
   return out;
 }
 
@@ -526,7 +580,13 @@ function renderEl(e: El, H: number): CSSProperties {
   };
   if (e.kind === 'box') {
     if (e.shape === 'circle') { st.width = `${e.w}%`; st.aspectRatio = '1 / 1'; st.height = 'auto'; st.borderRadius = '50%'; st.background = e.bg; }
-    else { st.height = `${e.h ?? 10}%`; st.background = e.bg; st.borderRadius = e.radius ? `${e.radius}px` : undefined; }
+    else {
+      st.height = `${e.h ?? 10}%`; st.background = e.bg; st.borderRadius = e.radius ? `${e.radius}px` : undefined;
+      // Flèche : la pointe DÉSIGNE l'offre. Vers le bas en portrait (elle amène l'œil du
+      // déclencheur au produit puis au prix), vers la droite en réglette (sens de lecture).
+      if (e.shape === 'arrow') { st.clipPath = ARROW_DOWN; st.borderRadius = undefined; }
+      else if (e.shape === 'arrow-r') { st.clipPath = ARROW_RIGHT; st.borderRadius = undefined; }
+    }
     if (e.border) st.border = e.border;
     // Rendu MAT (DA « Homme de Fer ») : pas de liseré blanc ni de reflet sur le cercle.
     // Seulement une ombre portée très douce pour le détacher à l'écran (ignorée à l'impression).
@@ -648,7 +708,7 @@ export const sizeOf = (l: Label, p: Project) => ({ w: l.wMm ?? p.labelWmm, h: l.
 // Options de composition (orientation, format…) calculées pour CETTE étiquette.
 export const optsFor = (l: Label, p: Project, editing: boolean): SeedOpts => {
   const { w, h } = sizeOf(l, p);
-  return { landscape: w > h * 1.5, logo: p.logo, disclaimer: p.disclaimer, editing, small: Math.min(w, h) < 80, aspect: w / h, minMm: Math.min(w, h), dateStart: p.dateStart, dateEnd: p.dateEnd };
+  return { landscape: w > h * 1.5, logo: p.logo, disclaimer: p.disclaimer, editing, small: Math.min(w, h) < 80, aspect: w / h, minMm: Math.min(w, h), dateStart: p.dateStart, dateEnd: p.dateEnd, cycleTag: cycleInfo(p.cycle || '')?.tag };
 };
 
 function layout(p: Project) {
@@ -780,6 +840,41 @@ function Slider({ label, value, min, max, step, onChange, suffix }: { label: str
 }
 function NumMm({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return <Field label={label}><input type="number" min={10} max={420} value={value} onChange={e => onChange(Math.max(10, Math.min(420, parseInt(e.target.value) || 0)))} style={inp} /></Field>;
+}
+
+// Choix du cycle promo (15 jours). Une planche = un cycle ; les dates de validité en
+// découlent, et la pastille s'imprime sur chaque étiquette. « ‹ / › » = cycle précédent /
+// suivant, ce qui suffit pour préparer le plan des 15 prochains jours en un clic.
+function CyclePicker({ cycle, onChange }: { cycle?: string; onChange: (c: string | null) => void }) {
+  const info = cycleInfo(cycle || '');
+  const btn = (on: boolean): CSSProperties => ({ flex: 1, padding: '6px', background: on ? '#16a34a' : '#1e293b', color: on ? '#fff' : '#94a3b8', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700 });
+  const nav: CSSProperties = { width: 34, padding: '6px 0', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 14, fontWeight: 800 };
+  const cur = cycle || cycleOf();
+  const c = cycleInfo(cur)!;
+  return (
+    <Field label="Cycle promo — rotation tous les 15 jours">
+      {info ? (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+          <button onClick={() => onChange(shiftCycle(cur, -1))} title="Cycle précédent" style={nav}>‹</button>
+          <div style={{ flex: 1, textAlign: 'center', padding: '6px 4px', background: '#0e7a4d22', border: '1px solid #0E7A4D', borderRadius: 5, color: '#4ade80', fontSize: 12.5, fontWeight: 800 }}>{info.label}</div>
+          <button onClick={() => onChange(shiftCycle(cur, 1))} title="Cycle suivant" style={nav}>›</button>
+        </div>
+      ) : (
+        <button onClick={() => onChange(cycleOf())} style={{ width: '100%', padding: '8px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>＋ Activer le cycle en cours ({cycleInfo(cycleOf())!.label})</button>
+      )}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+        <input type="month" value={`${c.year}-${String(c.month).padStart(2, '0')}`}
+          onChange={e => { const [y, mo] = e.target.value.split('-'); if (y && mo) onChange(`${y}-${mo}-${c.half}`); }}
+          style={{ ...inp, flex: 1.2, cursor: 'pointer' }} />
+        <button onClick={() => onChange(`${c.year}-${String(c.month).padStart(2, '0')}-1`)} style={btn(!!info && c.half === 1)}>Du 1er</button>
+        <button onClick={() => onChange(`${c.year}-${String(c.month).padStart(2, '0')}-15`)} style={btn(!!info && c.half === 15)}>Du 15</button>
+      </div>
+      <div style={{ fontSize: 10, color: '#64748b', lineHeight: 1.5 }}>
+        La pastille verte <strong style={{ color: '#4ade80' }}>{c.tag}</strong> s&apos;imprime sur chaque étiquette : au changement de plan, une étiquette du cycle précédent se repère d&apos;un coup d&apos;œil dans le linéaire.
+        {info && <button onClick={() => onChange(null)} style={{ display: 'block', marginTop: 6, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 10, textDecoration: 'underline', padding: 0 }}>Retirer la pastille</button>}
+      </div>
+    </Field>
+  );
 }
 
 function ContentForm({ l, set }: { l: Label; set: (k: keyof LabelData, v: string) => void }) {
@@ -1466,6 +1561,13 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     const flip = (p.labelWmm > p.labelHmm * 1.5) !== (w > h * 1.5);
     return { ...p, labelWmm: w, labelHmm: h, labels: flip ? p.labels.map(l => ({ ...l, overrides: {} })) : p.labels };
   });
+  // Choisir un cycle cale aussi la période de validité de toute la planche : une seule
+  // décision (« on est sur le cycle du 15 ») au lieu de deux dates à ressaisir.
+  const setCycle = (c: string | null) => setProject(p => {
+    if (!c) return { ...p, cycle: undefined };
+    const info = cycleInfo(c);
+    return info ? { ...p, cycle: c, dateStart: info.start, dateEnd: info.end } : p;
+  });
   const current = project.labels.find(l => l.id === selLabel) || null;
   const seedOpts: SeedOpts = { landscape: L.landscape, logo: project.logo, disclaimer: project.disclaimer, editing: true, small: L.small, aspect: project.labelWmm / project.labelHmm, minMm: Math.min(project.labelWmm, project.labelHmm), dateStart: project.dateStart, dateEnd: project.dateEnd };
   const currentEl: El | null = current && selEl ? resolveEls(current, seedOpts).find(e => e.id === selEl) || null : null;
@@ -1518,13 +1620,14 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
     if (isMobile) setPanelOpen(true);
   };
   // Ajout d'une forme simple : carré, rond ou ligne (déplaçable / redimensionnable / supprimable).
-  const addShape = (shape: 'rect' | 'circle' | 'line') => {
+  const addShape = (shape: 'rect' | 'circle' | 'line' | 'arrow') => {
     const target = current || project.labels[project.labels.length - 1];
     if (!target) return;
     const asp = project.labelWmm / project.labelHmm;
     const base = { id: 's' + uid(), kind: 'box' as ElKind, size: 0, font: SYS, color: HDF.red, weight: 400, align: 'left' as Align, rot: 0, removable: true, bg: HDF.red };
     let e: El;
     if (shape === 'circle') e = { ...base, x: 38, y: 38, w: 24, shape: 'circle' };
+    else if (shape === 'arrow') e = { ...base, x: 25, y: 38, w: 50, h: Math.round(50 * asp * 0.9 * 10) / 10, shape: 'arrow' };
     else if (shape === 'line') e = { ...base, x: 25, y: 50, w: 50, h: 0.8, radius: 999 };
     else e = { ...base, x: 38, y: 40, w: 24, h: Math.round(24 * asp * 10) / 10, radius: 4 };
     updateLabel(target.id, l => ({ ...l, extra: [...l.extra, e] }));
@@ -1651,12 +1754,13 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                 </Field>
                 <LogoLibrary logos={logos} onSave={onSaveLogo} onDelete={onDeleteLogo} onPick={src => setProject(p => ({ ...p, logo: src }))} />
                 {project.logo && <button onClick={() => onSaveLogo('Logo', project.logo!)} style={{ ...inp, cursor: 'pointer', textAlign: 'center', display: 'block', marginBottom: 10, color: '#cbd5e1' }}>💾 Enregistrer le logo actuel dans la bibliothèque</button>}
-                <Field label="Période de promotion (toutes les étiquettes)">
+                <CyclePicker cycle={project.cycle} onChange={setCycle} />
+                <Field label="Période affichée (si aucun cycle)">
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <input value={project.dateStart || ''} onChange={e => setProject(p => ({ ...p, dateStart: e.target.value }))} placeholder="du 01/06/2026" style={inp} />
                     <input value={project.dateEnd || ''} onChange={e => setProject(p => ({ ...p, dateEnd: e.target.value }))} placeholder="au 30/06/2026" style={inp} />
                   </div>
-                  <div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>S&apos;affiche en bas de chaque étiquette (sauf si une étiquette a ses propres dates).</div>
+                  <div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>Rempli automatiquement par le cycle. S&apos;affiche en bas de chaque étiquette (sauf si une étiquette a ses propres dates).</div>
                 </Field>
                 <Field label="Mentions légales (bas d'étiquette)"><textarea value={project.disclaimer} onChange={e => setProject(p => ({ ...p, disclaimer: e.target.value }))} rows={2} style={{ ...inp, resize: 'none' }} /></Field>
                 <div style={{ borderTop: '1px solid #1e293b', paddingTop: 12, marginTop: 6 }}>
@@ -1682,7 +1786,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
                   <SectionTitle>＋ Ajouter sur l&apos;étiquette</SectionTitle>
                   <button onClick={() => addTextBlock()} style={{ width: '100%', padding: '9px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 800, marginBottom: 6 }}>🔤 Bloc de texte</button>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {[{ s: 'rect' as const, t: '⬛', n: 'Carré' }, { s: 'circle' as const, t: '⚫', n: 'Rond' }, { s: 'line' as const, t: '➖', n: 'Ligne' }].map(b => <button key={b.s} onClick={() => addShape(b.s)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}><span style={{ fontSize: 16 }}>{b.t}</span>{b.n}</button>)}
+                    {[{ s: 'rect' as const, t: '⬛', n: 'Carré' }, { s: 'arrow' as const, t: '🔻', n: 'Flèche' }, { s: 'circle' as const, t: '⚫', n: 'Rond' }, { s: 'line' as const, t: '➖', n: 'Ligne' }].map(b => <button key={b.s} onClick={() => addShape(b.s)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}><span style={{ fontSize: 16 }}>{b.t}</span>{b.n}</button>)}
                   </div>
                 </div>
                 <Field label="Type de promotion">

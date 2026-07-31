@@ -20,7 +20,7 @@ const P: Project = {
   pharmacy: 'Pharmacie Test', plan: '', logo: null,
   disclaimer: '*Dans la limite des stocks disponibles.',
   pageFormat: 'A4', labelWmm: 210, labelHmm: 297, theme: 'hdf',
-  dateStart: '01/07/2026', dateEnd: '31/07/2026', labels: [],
+  cycle: '2026-07-15', dateStart: '15/07/2026', dateEnd: '31/07/2026', labels: [],
 };
 
 export default function Preview() {

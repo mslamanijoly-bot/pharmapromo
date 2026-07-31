@@ -20,6 +20,43 @@ export function fitSize(text: string, wFrac: number, aspect: number, base: numbe
   return Math.round(Math.max(floor, Math.min(base, cap)) * 1000) / 1000;
 }
 
+// ── Cycles promo de 15 jours ────────────────────────────────────────────
+// Le plan promo tourne deux fois par mois : le 1er et le 15. Chaque planche porte donc
+// un cycle, imprimé sur chaque étiquette sous forme de pastille. But : repérer d'un
+// coup d'œil, dans le linéaire, une étiquette restée du cycle précédent.
+// Identifiant : « AAAA-MM-1 » ou « AAAA-MM-15 ».
+const MONTHS_SHORT = ['JANV.', 'FÉVR.', 'MARS', 'AVR.', 'MAI', 'JUIN', 'JUIL.', 'AOÛT', 'SEPT.', 'OCT.', 'NOV.', 'DÉC.'];
+const p2 = (n: number) => String(n).padStart(2, '0');
+
+/** Cycle contenant une date : « 2026-07-15 » pour le 20 juillet 2026. */
+export const cycleOf = (d = new Date()) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${d.getDate() < 15 ? 1 : 15}`;
+
+/** Décompose un cycle en dates de début / fin et libellés d'affichage. */
+export function cycleInfo(cycle: string) {
+  const m = /^(\d{4})-(\d{2})-(1|15)$/.exec((cycle || '').trim());
+  if (!m) return null;
+  const year = +m[1], month = +m[2], half = +m[3];
+  if (month < 1 || month > 12) return null;
+  const lastDay = new Date(year, month, 0).getDate();   // jour 0 du mois suivant = dernier jour
+  const d1 = half === 1 ? 1 : 15;
+  const d2 = half === 1 ? 14 : lastDay;
+  return {
+    year, month, half,
+    start: `${p2(d1)}/${p2(month)}/${year}`,
+    end: `${p2(d2)}/${p2(month)}/${year}`,
+    tag: `${d1} → ${d2} ${MONTHS_SHORT[month - 1]}`,          // pastille imprimée sur l'étiquette
+    label: `${d1} → ${d2} ${MONTHS_SHORT[month - 1]} ${year}`, // libellé du panneau de réglages
+  };
+}
+
+/** Cycle voisin : +1 = suivant, -1 = précédent (bascule de mois et d'année comprise). */
+export function shiftCycle(cycle: string, dir: 1 | -1): string {
+  const c = cycleInfo(cycle);
+  if (!c) return cycleOf();
+  if (dir === 1) return c.half === 1 ? `${c.year}-${p2(c.month)}-15` : `${c.month === 12 ? c.year + 1 : c.year}-${p2(c.month === 12 ? 1 : c.month + 1)}-1`;
+  return c.half === 15 ? `${c.year}-${p2(c.month)}-1` : `${c.month === 1 ? c.year - 1 : c.year}-${p2(c.month === 1 ? 12 : c.month - 1)}-15`;
+}
+
 /** Formate une remise en euros : 5 → "5", 0.5 → "0,50", 2.9 → "2,90". */
 export const fr = (n: number) => (Number.isInteger(n) ? String(n) : ff(n));
 
