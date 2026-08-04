@@ -12,7 +12,7 @@ const SAMPLE = {
   qtyLabel: '500 ml',
   normalPrice: '9,89', promoPrice: '5,90', // remise = -3,99 €
   couponValue: '2,00', couponExpiry: '31/12/2026',
-  lotQty: '3', lotFree: '1', lotPrice: '19,98',
+  lotQty: '2', lotFree: '0', lotPrice: '14,90',
   t1q: '1', t1p: '9,90', t2q: '2', t2p: '8,50', t3q: '3', t3p: '7,90',
 };
 

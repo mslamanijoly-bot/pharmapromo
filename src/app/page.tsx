@@ -162,7 +162,10 @@ const newData = (): LabelData => ({
   normalPrice: '31,90', promoPrice: '26,90',
   remiseType: 'euro', remiseManual: '',
   couponValue: '2,00', couponExpiry: '31/12/2026',
-  lotQty: '3', lotFree: '1', lotPrice: '19,98', unitPrice: '9,99',
+  // Lot : TOUJOURS prérempli en « lot de 2 » — c'est le conditionnement promo courant en
+  // officine. Qté 2 + 0 offert = pack à prix fixe (« LOT DE 2 »), le prix barré étant
+  // 2 × le prix normal. Passer « offert(s) » à 1 rebascule sur « 1 acheté + 1 offert ».
+  lotQty: '2', lotFree: '0', lotPrice: '49,90', unitPrice: '9,99',
   t1q: '1', t1p: '9,90', t2q: '2', t2p: '8,50', t3q: '3', t3p: '7,90',
   dateStart: '', dateEnd: '',
 });
@@ -172,9 +175,11 @@ const newData = (): LabelData => ({
 //  • Offert(s) = 0 → pack à prix fixe (« lot de 3 à 13,90 € ») : bandeau « LOT DE N », prix du lot,
 //    prix normal barré = prix à l'unité (d.normalPrice) × quantité, et l'économie réalisée.
 function lotView(d: LabelData) {
-  const qty = Math.max(2, parseInt(d.lotQty) || 3);
+  // Repli = lot de 2 sans offert : une colonne « Qté totale » / « Offert(s) » vide à l'import
+  // donne la même étiquette que le préremplissage du panneau, jamais une mécanique surprise.
+  const qty = Math.max(2, parseInt(d.lotQty) || 2);
   const fRaw = parseInt(d.lotFree);
-  const free = Number.isNaN(fRaw) ? 1 : Math.max(0, fRaw);
+  const free = Number.isNaN(fRaw) ? 0 : Math.max(0, fRaw);
   const isPack = free === 0;
   const paid = Math.max(1, qty - free);
   const unit = pf(d.normalPrice), lot = pf(d.lotPrice);
@@ -571,10 +576,7 @@ function renderEl(e: El, H: number): CSSProperties {
     fontFamily: e.font, fontWeight: e.weight, color: e.color, textAlign: e.align, lineHeight: 1.02,
     width: e.w != null ? `${e.w}%` : undefined,
     whiteSpace: e.nowrap ? 'nowrap' : (e.w != null ? 'normal' : 'nowrap'),
-    textDecoration: e.strike ? 'line-through' : undefined,
-    // Trait du prix barré : épaisseur maîtrisée (sinon il hérite de la graisse et masque le prix).
-    textDecorationThickness: e.strike ? `${Math.max(1, fs * (e.strikeW ?? 0.05))}px` : undefined,
-    textDecorationColor: e.strike ? e.color : undefined,
+    // Le prix barré n'utilise PAS `line-through` (trait horizontal) : voir <Strike/>.
     letterSpacing: e.track != null ? `${e.track}em` : (e.weight >= 800 ? '0.01em' : undefined),
     fontStyle: e.italic ? 'italic' : undefined,
   };
@@ -601,6 +603,24 @@ function renderEl(e: El, H: number): CSSProperties {
     st.display = 'inline-block'; st.width = 'auto';
   }
   return st;
+}
+
+// Barré du prix normal : une OBLIQUE MONTANTE « / », jamais un trait horizontal « - ».
+// La CSS (`text-decoration: line-through`) ne sait tracer qu'un trait horizontal ; on dessine
+// donc la barre soi-même, en dégradé (une bande pleine, transparente de part et d'autre),
+// posée PAR-DESSUS le texte. Le span est `inline-block` : il épouse la largeur des chiffres,
+// alors que le bloc parent est souvent bien plus large — la barre s'arrêterait dans le vide.
+function Strike({ text, color, thickness }: { text: string; color: string; thickness: number }) {
+  const a = `calc(50% - ${thickness / 2}px)`, b = `calc(50% + ${thickness / 2}px)`;
+  return (
+    <span style={{ position: 'relative', display: 'inline-block' }}>
+      {text}
+      <span aria-hidden style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        backgroundImage: `linear-gradient(to top right, transparent ${a}, ${color} ${a}, ${color} ${b}, transparent ${b})`,
+      }} />
+    </span>
+  );
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -688,7 +708,11 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
                   initial={e.text || ''}
                   onCommit={(t) => { onCommitText?.(e.id, t); onEndEdit?.(); }}
                   onCancel={() => onEndEdit?.()} />
-              : (e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} /> : (e.kind === 'box' ? null : e.text))}
+              : (e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} />
+                : (e.kind === 'box' ? null
+                  : (e.strike && e.text
+                    ? <Strike text={e.text} color={e.color} thickness={Math.max(1, e.size * H * (e.strikeW ?? 0.05))} />
+                    : e.text)))}
             {sel && !isEd && editable && onStartEdit && <button title="Modifier le texte" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onStartEdit(e.id); }} style={{ position: 'absolute', top: -10, left: -10, width: 18, height: 18, borderRadius: '50%', background: '#16a34a', color: '#fff', border: '2px solid #fff', fontSize: 10, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 6 }}>✎</button>}
             {sel && !isEd && <button title="Supprimer ce bloc" onPointerDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); onDelEl(e.id); }} style={{ position: 'absolute', top: -10, right: -10, width: 18, height: 18, borderRadius: '50%', background: '#ef4444', color: '#fff', border: '2px solid #fff', fontSize: 11, cursor: 'pointer', lineHeight: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>}
           </div>
@@ -903,7 +927,14 @@ function ContentForm({ l, set }: { l: Label; set: (k: keyof LabelData, v: string
     {normal > 0 && promo > 0 && promo >= normal && <Warn>⚠ Le prix promo doit être <strong>inférieur</strong> au prix normal.</Warn>}
   </>;
   else if (l.type === 'bon-reduction') middle = G(<PriceInp label="Valeur bon €" value={d.couponValue} onChange={v => set('couponValue', v)} />, <TextInp label="Validité" value={d.couponExpiry} onChange={v => set('couponExpiry', v)} />);
-  else if (l.type === 'remise-lot') middle = <>{G(<TextInp label="Qté totale" value={d.lotQty} onChange={v => set('lotQty', v)} />, <TextInp label="Dont offert(s)" value={d.lotFree} onChange={v => set('lotFree', v)} />)}<PriceInp label="Prix du lot €" value={d.lotPrice} onChange={v => set('lotPrice', v)} />{(parseInt(d.lotFree) || 0) >= (parseInt(d.lotQty) || 0) && <Warn>⚠ Le nombre d&apos;offerts doit être inférieur à la quantité totale.</Warn>}</>;
+  else if (l.type === 'remise-lot') { const lv = lotView(d); middle = <>
+    {G(<TextInp label="Qté totale" value={d.lotQty} onChange={v => set('lotQty', v)} />, <TextInp label="Dont offert(s)" value={d.lotFree} onChange={v => set('lotFree', v)} />)}
+    {/* Prix à l'unité : c'est LUI qui donne le prix barré et l'économie d'un lot à prix fixe. */}
+    {G(<PriceInp label="Prix à l'unité €" value={d.normalPrice} onChange={v => set('normalPrice', v)} />, <PriceInp label="Prix du lot €" value={d.lotPrice} onChange={v => set('lotPrice', v)} />)}
+    {lv.isPack && lv.save > 0 && <div style={{ background: '#0d2137', border: '1px solid #1e3a5f', borderRadius: 5, padding: '7px 9px', fontSize: 12, color: '#38bdf8', marginBottom: 10 }}>📦 Lot de {lv.qty} · au lieu de <strong>{ff(lv.oldTotal)} €</strong> → économie <strong>{ff(lv.save)} €</strong> (−{lv.pct} %)</div>}
+    {lv.isPack && lv.lot > 0 && lv.unit > 0 && lv.save <= 0 && <Warn>⚠ Le prix du lot doit être <strong>inférieur</strong> à {ff(lv.oldTotal)} € ({lv.qty} × le prix à l&apos;unité).</Warn>}
+    {(parseInt(d.lotFree) || 0) >= (parseInt(d.lotQty) || 0) && <Warn>⚠ Le nombre d&apos;offerts doit être inférieur à la quantité totale.</Warn>}
+  </>; }
   else if (l.type === 'remise-2eme') { const r2 = deux2(d); middle = <>{G(<PriceInp label="Prix à l'unité €" value={d.normalPrice} onChange={v => set('normalPrice', v)} />, <TextInp label="Remise sur le 2ᵉ (%)" value={d.remiseManual} onChange={v => set('remiseManual', v.replace(/[^\d]/g, ''))} placeholder="60" />)}<div style={{ background: '#0d2137', border: '1px solid #1e3a5f', borderRadius: 5, padding: '7px 9px', fontSize: 12, color: '#38bdf8', marginBottom: 10 }}>🛒 2ᵉ produit à <strong>−{r2.pct}%</strong> · soit <strong>{ff(r2.lot2)} €</strong> le lot de 2</div></>; }
   else middle = <>{G(<TextInp label="P1 — qté" value={d.t1q} onChange={v => set('t1q', v)} />, <PriceInp label="P1 — prix" value={d.t1p} onChange={v => set('t1p', v)} />)}{G(<TextInp label="P2 — qté" value={d.t2q} onChange={v => set('t2q', v)} />, <PriceInp label="P2 — prix" value={d.t2p} onChange={v => set('t2p', v)} />)}{G(<TextInp label="P3 — qté" value={d.t3q} onChange={v => set('t3q', v)} />, <PriceInp label="P3 — prix" value={d.t3p} onChange={v => set('t3p', v)} />)}</>;
   return <>{cat}{prod}{middle}{qty}{dates}</>;
@@ -998,10 +1029,13 @@ const IMPORT_FIELDS: Record<PromoType, ImpField[]> = {
   'bon-reduction': [F_CAT, F_PROD,
     { key: 'couponValue', label: 'Valeur bon €', kw: /valeur|bon|montant/i },
     { key: 'couponExpiry', label: 'Validité', kw: /validit|date|jusqu|expir|fin/i }],
+  // Le lot par défaut est un pack à prix fixe : sans le prix À L'UNITÉ, l'étiquette n'a ni prix
+  // barré ni économie affichée. La colonne est donc au modèle (« unité » ≠ « lot » : pas de conflit).
   'remise-lot': [F_CAT, F_PROD,
     { key: 'lotQty', label: 'Qté totale', kw: /qt|quantit|total|nombre/i },
     { key: 'lotFree', label: 'Offert(s)', kw: /offert|gratuit/i },
-    { key: 'lotPrice', label: 'Prix du lot €', kw: /prix|lot|tarif|montant/i }, F_QTY],
+    { key: 'normalPrice', label: "Prix à l'unité €", kw: /unit|normal|barr|public|ancien|pi[eè]ce/i },
+    { key: 'lotPrice', label: 'Prix du lot €', kw: /lot|tarif|montant/i }, F_QTY],
   'multi-achat': [F_CAT, F_PROD,
     { key: 't1q', label: 'P1 qté', kw: /q.?1|qt[eé]?\s*1/i }, { key: 't1p', label: 'P1 prix', kw: /p.?1|prix\s*1/i },
     { key: 't2q', label: 'P2 qté', kw: /q.?2|qt[eé]?\s*2/i }, { key: 't2p', label: 'P2 prix', kw: /p.?2|prix\s*2/i },
@@ -1048,10 +1082,10 @@ const TEMPLATES: Record<PromoType, { headers: string[]; rows: string[][] }> = {
     ],
   },
   'remise-lot': {
-    headers: ['Catégorie', 'Produit', 'Qté totale', 'Offert(s)', 'Prix du lot €', 'Descriptif', 'Format'],
+    headers: ['Catégorie', 'Produit', 'Qté totale', 'Offert(s)', "Prix à l'unité €", 'Prix du lot €', 'Descriptif', 'Format'],
     rows: [
-      ['COMPLÉMENT ALIMENTAIRE', 'Magnésium B6', '3', '1', '19,98', 'Lot de 3 boîtes', 'A4'],
-      ['SOLAIRE', 'Spray solaire SPF50+', '2', '1', '24,90', 'Lot de 2 sprays', 'Réglette'],
+      ['COMPLÉMENT ALIMENTAIRE', 'Magnésium B6', '2', '0', '12,90', '19,98', 'Lot de 2 boîtes', 'A4'],
+      ['SOLAIRE', 'Spray solaire SPF50+', '2', '0', '15,90', '24,90', 'Lot de 2 sprays', 'Réglette'],
     ],
   },
   'multi-achat': {
@@ -1077,7 +1111,7 @@ const AUTO_HEADERS = ['Type', 'Catégorie', 'Produit', "Prix normal / à l'unit�
 const _E = '';
 const _pp = (c: string, p: string, n: string, pr: string, d: string, f: string) => ['Prix promo', c, p, n, pr, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, d, f];
 const _bon = (c: string, p: string, v: string, val: string, f: string) => ['Bon', c, p, _E, _E, v, val, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, f];
-const _lot = (c: string, p: string, q: string, o: string, px: string, d: string, f: string) => ['Lot', c, p, _E, _E, _E, _E, q, o, px, _E, _E, _E, _E, _E, _E, _E, d, f];
+const _lot = (c: string, p: string, u: string, q: string, o: string, px: string, d: string, f: string) => ['Lot', c, p, u, _E, _E, _E, q, o, px, _E, _E, _E, _E, _E, _E, _E, d, f];
 const _multi = (c: string, p: string, q1: string, p1: string, q2: string, p2: string, q3: string, p3: string, f: string) => ['Multi', c, p, _E, _E, _E, _E, _E, _E, _E, q1, p1, q2, p2, q3, p3, _E, _E, f];
 const _deux = (c: string, p: string, u: string, r: string, d: string, f: string) => ['2ᵉ produit', c, p, u, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, _E, r, d, f];
 const AUTO_TEMPLATE: { headers: string[]; rows: string[][] } = {
@@ -1096,10 +1130,10 @@ const AUTO_TEMPLATE: { headers: string[]; rows: string[][] } = {
     _bon('BÉBÉ', 'Lingettes MUSTELA', '1,50', '30/09/2026', 'Rayon'),
     _bon('VÉTÉRINAIRE', 'Antiparasitaire FRONTLINE Combo', '5,00', '15/11/2026', 'A4'),
     _bon('SEVRAGE TABAGIQUE', 'Patchs NICORETTE 25 mg', '3,00', '31/12/2026', 'Vitrine'),
-    _lot('COMPLÉMENT ALIMENTAIRE', 'Magnésium B6 SANOFI', '3', '1', '19,98', 'Lot de 3 boîtes', 'A4'),
-    _lot('SOLAIRE', 'Spray solaire BIODERMA SPF50+', '2', '1', '24,90', 'Lot de 2 sprays', 'Réglette'),
-    _lot('CORPS', 'Gel douche SANEX Zéro%', '4', '2', '9,80', 'Lot de 4 flacons', 'Rayon'),
-    _lot('IMMUNITÉ', 'Vitamine C AZINC', '3', '1', '15,90', 'Lot de 3 tubes', 'Petite'),
+    _lot('COMPLÉMENT ALIMENTAIRE', 'Magnésium B6 SANOFI', '12,90', '2', '0', '19,98', 'Lot de 2 boîtes', 'A4'),
+    _lot('SOLAIRE', 'Spray solaire BIODERMA SPF50+', '15,90', '2', '0', '24,90', 'Lot de 2 sprays', 'Réglette'),
+    _lot('CORPS', 'Gel douche SANEX Zéro%', '5,90', '2', '0', '9,80', 'Lot de 2 flacons', 'Rayon'),
+    _lot('IMMUNITÉ', 'Vitamine C AZINC', '9,90', '2', '0', '15,90', 'Lot de 2 tubes', 'Petite'),
     _multi('SOLAIRE', 'Spray solaire GARNIER SPF50', '1', '12,90', '2', '22,90', '3', '29,90', 'Petite'),
     _multi('HYGIÈNE', 'Savon de Marseille LE PETIT MARSEILLAIS', '1', '3,50', '3', '9,00', '5', '13,50', 'Rayon'),
     _multi('NUTRITION SPORTIVE', 'Barre protéinée EAFIT', '1', '2,50', '3', '6,00', '6', '10,00', 'Réglette'),
@@ -1121,7 +1155,7 @@ function triggerDownload(blob: Blob, name: string) {
 }
 
 const TEMPLATE_NUMERIC_HEADERS = new Set([
-  'Prix normal €', "Prix normal / à l'unité €", 'Prix promo €', 'Valeur bon €', 'Qté totale', 'Offert(s)', 'Prix du lot €',
+  'Prix normal €', "Prix normal / à l'unité €", "Prix à l'unité €", 'Prix promo €', 'Valeur bon €', 'Qté totale', 'Offert(s)', 'Prix du lot €',
   'Qté 1', 'Prix 1', 'Qté 2', 'Prix 2', 'Qté 3', 'Prix 3', 'Remise 2ᵉ (%)',
 ]);
 
