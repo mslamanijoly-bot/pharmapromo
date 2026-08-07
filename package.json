@@ -16,7 +16,8 @@
     "logos:planche": "node --experimental-strip-types scripts/gen-logo-planche.ts",
     "logos:recuperer:navigateur": "node --experimental-strip-types scripts/fetch-logos-browser.ts",
     "logos:rejeter": "node --experimental-strip-types scripts/reject-logo.ts",
-    "logos:manifeste": "node --experimental-strip-types scripts/gen-logo-manifest.ts"
+    "logos:manifeste": "node --experimental-strip-types scripts/gen-logo-manifest.ts",
+    "logos:officine": "node --experimental-strip-types scripts/fetch-logos-officine.ts"
   },
   "dependencies": {
     "@upstash/redis": "^1.38.0",

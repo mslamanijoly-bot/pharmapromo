@@ -76,7 +76,8 @@ export const PRODUCT_BRANDS: Record<string, string> = {
   'Colgate': 'colgate_palmolive',
   'Elmex': 'colgate_palmolive',
   'Meridol': 'colgate_palmolive',
-  'Sanex': 'colgate_palmolive',
+  // « Sanex » a désormais sa propre entrée au catalogue : la renvoyer AUSSI vers
+  // Colgate-Palmolive rendrait la marque ambiguë, donc sans logo. Le plus précis gagne.
   'Inava': 'laboratoires_pierre_fabre',
 
   // ── Hygiène & soin grand public ─────────────────────────────────────
@@ -86,8 +87,8 @@ export const PRODUCT_BRANDS: Record<string, string> = {
   'Gillette': 'procter_et_gamble',
   'Oral-B': 'procter_et_gamble',
   'Vicks': 'procter_et_gamble',
-  'Petit Marseillais': 'vendome',
-  'Marseillais': 'vendome',
+  // « Le Petit Marseillais » a son entrée propre ; seul le mot isolé reste utile ici.
+  'Marseillais': 'le_petit_marseillais',
   'Sanytol': 'reckitt',
   'Veet': 'reckitt',
   'Strepsils': 'reckitt',

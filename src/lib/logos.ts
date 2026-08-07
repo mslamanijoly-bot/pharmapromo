@@ -19,6 +19,7 @@
 import { CATALOG, BASE_PATH as CATALOG_BASE, type CatalogEntry } from './logos.catalog.ts';
 import { PRODUCT_BRANDS } from './logos.brands.ts';
 import { EXTRA_CATALOG } from './logos.extra.ts';
+import { OFFICINE_CATALOG } from './logos.officine.ts';
 import { LOGO_FILES } from './logos.manifest.ts';
 
 export type LogoEntry = CatalogEntry;
@@ -42,7 +43,7 @@ export interface LogoMatch {
  * Une clé en double serait une erreur : on la refuse.
  */
 export const LOGOS: LogoEntry[] = (() => {
-  const all = [...CATALOG, ...EXTRA_CATALOG];
+  const all = [...CATALOG, ...EXTRA_CATALOG, ...OFFICINE_CATALOG];
   const seen = new Set<string>();
   for (const e of all) {
     if (seen.has(e.key)) throw new Error(`logos.extra.ts : la clé « ${e.key} » existe déjà au catalogue`);
@@ -83,17 +84,30 @@ const byKey = new Map(LOGOS.map(e => [e.key, e]));
 // Marques produit ajoutées à la main : « Eludril » doit mener à Pierre Fabre. Une clé
 // inconnue est ignorée ici — c'est le test qui la signale, pour ne pas faire tomber l'app
 // en production sur une faute de frappe dans un fichier de données.
+//
+// LE CATALOGUE PRIME. Si la marque y a déjà sa propre entrée — « Pampers » et « Tena » en ont
+// une depuis que le site de l'officine les a fournies —, on n'ajoute PAS le renvoi vers la
+// maison mère : les deux cibles rendraient la marque ambiguë, donc sans logo, l'inverse du but.
+// Cette règle s'applique d'elle-même à chaque enrichissement, là où supprimer les doublons
+// à la main les verrait revenir au catalogue suivant.
+const brandsMasquees: string[] = [];
 for (const [brand, key] of Object.entries(PRODUCT_BRANDS)) {
   if (!byKey.has(key)) continue;
   const n = normalise(brand);
   if (!n) continue;
-  if (!aliasIndex.has(n)) aliasIndex.set(n, new Set());
-  aliasIndex.get(n)!.add(key);
+  if (aliasIndex.has(n)) { brandsMasquees.push(brand); continue; }
+  aliasIndex.set(n, new Set([key]));
 }
 
 /** Marques produit dont la cible n'existe pas au catalogue — vérifié par les tests. */
 export const orphanBrands = (): string[] =>
   Object.entries(PRODUCT_BRANDS).filter(([, k]) => !byKey.has(k)).map(([b]) => b);
+
+/**
+ * Marques produit ignorées parce que le catalogue les décrit déjà mieux. Ce n'est pas une
+ * erreur : c'est le signe que l'entrée dédiée a pris le relais du renvoi vers le groupe.
+ */
+export const shadowedBrands = (): string[] => [...brandsMasquees];
 
 // Alias trop courts : « RB », « J&J » apparaîtraient dans trop de libellés par accident.
 // 3 caractères suffisent pour ACM, SVR, GSK, UPSA — qui, eux, sont écrits tels quels en rayon.

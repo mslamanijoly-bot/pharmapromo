@@ -18,7 +18,10 @@ import { fileURLToPath } from 'node:url';
 // que ce script écrit. On reste en amont de la chaîne.
 import { CATALOG } from '../src/lib/logos.catalog.ts';
 import { EXTRA_CATALOG } from '../src/lib/logos.extra.ts';
-const LOGOS = [...CATALOG, ...EXTRA_CATALOG];
+import { OFFICINE_CATALOG } from '../src/lib/logos.officine.ts';
+// Les marques de l'officine ont toutes un vrai logo, mais il leur faut une vignette de repli :
+// sans elle, rejeter un logo à la vérification laisserait l'étiquette avec une image cassée.
+const LOGOS = [...CATALOG, ...EXTRA_CATALOG, ...OFFICINE_CATALOG];
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'logos_jpeg');
 mkdirSync(OUT, { recursive: true });

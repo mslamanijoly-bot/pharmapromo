@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { findLab, normalise, LOGOS, logoUrl, orphanBrands } from './logos';
+import { findLab, normalise, LOGOS, logoUrl, orphanBrands, shadowedBrands } from './logos';
 import { PRODUCT_BRANDS } from './logos.brands';
 import { AUTO_TEMPLATE } from './templates';
 
@@ -89,7 +89,10 @@ describe('marques produit (logos.brands.ts)', () => {
     expect(findLab('Lait solaire ANTHELIOS SPF50+').key).toBe('la_roche_posay');
     expect(findLab('Probiotiques LACTIBIANE Référence').key).toBe('pileje');
     expect(findLab('Bain de bouche LISTERINE').key).toBe('kenvue');
-    expect(findLab('Couches PAMPERS Baby-Dry T4').key).toBe('procter_et_gamble');
+    // Pampers a sa propre fiche depuis l'import du site de l'officine : on obtient donc le
+    // logo Pampers et non celui de Procter & Gamble. C'est le bon comportement — la marque
+    // que le client voit en rayon prime sur la maison mère.
+    expect(findLab('Couches PAMPERS Baby-Dry T4').key).toBe('pampers');
   });
 
   // Le vrai danger de ce fichier n'est pas la faute de frappe, c'est le mot trop générique :
@@ -102,11 +105,21 @@ describe('marques produit (logos.brands.ts)', () => {
     expect(fautifs).toEqual([]);
   });
 
+  // Le vrai risque n'est pas qu'une marque parte vers le groupe plutôt que vers sa fiche
+  // propre — les deux donnent un logo juste. C'est qu'elle devienne AMBIGUË et n'en donne
+  // aucun. Ce test garde donc l'œil sur l'ambiguïté, pas sur la cible exacte.
+  it('aucune marque produit ne devient ambiguë', () => {
+    const ambigues = Object.keys(PRODUCT_BRANDS).filter(m => findLab(m).status === 'ambiguous');
+    expect(ambigues).toEqual([]);
+  });
+
   it('chaque marque déclarée se retrouve seule dans un libellé', () => {
+    const masquees = new Set(shadowedBrands());
     for (const [brand, key] of Object.entries(PRODUCT_BRANDS)) {
       const m = findLab(`Promo ${brand} 200 ml`);
       expect(m.status, `${brand} → ${key}`).toBe('found');
-      expect(m.key, `${brand} → ${key}`).toBe(key);
+      // Une marque « masquée » a sa propre entrée au catalogue : elle mène là, pas au groupe.
+      if (!masquees.has(brand)) expect(m.key, `${brand} → ${key}`).toBe(key);
     }
   });
 });

@@ -16,7 +16,8 @@ import { fileURLToPath } from 'node:url';
 // justement ce qu'on écrit ici. Passer par lui créerait un cycle au premier lancement.
 import { CATALOG } from '../src/lib/logos.catalog.ts';
 import { EXTRA_CATALOG } from '../src/lib/logos.extra.ts';
-const LOGOS = [...CATALOG, ...EXTRA_CATALOG];
+import { OFFICINE_CATALOG } from '../src/lib/logos.officine.ts';
+const LOGOS = [...CATALOG, ...EXTRA_CATALOG, ...OFFICINE_CATALOG];
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = join(ROOT, 'public', 'logos_jpeg');

@@ -48,3 +48,6 @@ public/logos-planche.html
 
 # Sauvegardes locales avant modification
 *.sauvegarde-*
+
+# Journaux de récupération des logos
+logos-*.log
