@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback, CSSProperties } from 'react';
 import { MM, pf, ff, fr, fitSize, priceParts, parseTable, paginate, chunk, stackColumnBlocks, splitSize, cycleInfo, cycleOf, shiftCycle } from '@/lib/calc';
 import { type ImpType, getFields, autoMap, detectHeader, normalizeRows, prepareRows, PRICE_COLS, FORMAT_KW, TYPE_KW } from '@/lib/import';
+import { findLab, logoUrl } from '@/lib/logos';
 import { TEMPLATES, AUTO_TEMPLATE, TEMPLATE_NUMERIC_HEADERS } from '@/lib/templates';
 
 /* ════════════════════════════════════════════════════════════════════
@@ -206,6 +207,14 @@ function deux2(d: LabelData) {
 
 export function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelData>, size?: { w: number; h: number }): Label {
   return { id: uid(), type, accent: HDF.red, bg: HDF.paper, data: { ...newData(), ...data }, overrides: {}, extra: [], ...(size ? { wMm: size.w, hMm: size.h } : {}) };
+}
+
+// Élément « logo de marque », posé en haut à droite dans la respiration prévue à cet effet
+// (cf. seedElements). Source UNIQUE de la géométrie : un logo reconnu à l'import et un logo
+// déposé à la main par le bouton « Logo de marque » doivent être strictement interchangeables,
+// sinon le second se déplace en remplaçant le premier.
+export function brandLogoEl(src: string): El {
+  return { id: 'logo' + uid(), kind: 'image', src, x: 66, y: 6, w: 22, size: 0, font: SYS, color: '#000', weight: 400, align: 'left', rot: 0, removable: true };
 }
 
 function defaultProject(): Project {
@@ -1091,6 +1100,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
   const [fileName, setFileName] = useState('');
   const [error, setError] = useState('');
+  const [withLogo, setWithLogo] = useState(true);
   const fields = getFields(type);
   const ncols = rows.reduce((m, r) => Math.max(m, r.length), 0);
 
@@ -1131,15 +1141,28 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
   const domFmt = FORMATS.find(f => f.id === (Object.entries(fmtCounts).sort((a, b) => b[1] - a[1])[0]?.[0])) || null;
   const selected = prepared.filter((_, i) => !excluded.has(i));
   const selectedCount = selected.length;
+  // Laboratoire reconnu dans le libellé produit. Calculé une fois par ligne : sert à la fois
+  // au compteur, à la pastille de la liste et à la pose du logo — jamais recalculé ailleurs,
+  // pour que ce qu'on annonce à l'écran soit exactement ce qu'on pose sur l'étiquette.
+  const labOf = prepared.map(({ d }) => findLab(d.product || ''));
+  const logoReady = labOf.filter((m, i) => m.status === 'found' && !excluded.has(i)).length;
   const toggleRow = (i: number) => setExcluded(s => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   const toggleAll = () => setExcluded(s => (s.size === 0 ? new Set(prepared.map((_, i) => i)) : new Set()));
   const build = () => {
     if (!selectedCount) { setError('Cochez au moins un produit à générer.'); return; }
     if (hasHeader && rows[0]) saveImportMap(rows[0], type, mapping, formatCol, typeCol); // mémorise pour ce fournisseur
-    const labels = selected.map(({ d, r, rt }) => {
+    // On repart de `prepared` (et non de `selected`) pour garder l'indice d'origine :
+    // c'est lui qui relie une ligne à son laboratoire dans labOf.
+    const labels = prepared.flatMap(({ d, r, rt }, i) => {
+      if (excluded.has(i)) return [];
       if (!d.category) d.category = 'PROMOTION';
       const f = formatCol >= 0 ? matchFormat(r[formatCol] || '') : null;
-      return newLabel(rt, d, f ? { w: f.w, h: f.h } : undefined);
+      const label = newLabel(rt, d, f ? { w: f.w, h: f.h } : undefined);
+      const m = labOf[i];
+      // Uniquement sur un laboratoire FORMELLEMENT identifié : sur un doute (`ambiguous`),
+      // on préfère l'étiquette nue, que l'on complète à la main, à un logo faux imprimé en série.
+      if (withLogo && m.status === 'found' && m.image) label.extra = [brandLogoEl(logoUrl(m.image))];
+      return [label];
     });
     onImport(labels);
   };
@@ -1213,6 +1236,15 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
             <SectionTitle>Produits à générer ({selectedCount}/{validCount})</SectionTitle>
             {validCount > 0 && <button onClick={toggleAll} style={{ marginLeft: 'auto', marginBottom: 10, padding: '4px 10px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 5, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{excluded.size === 0 ? 'Tout décocher' : 'Tout cocher'}</button>}
           </div>
+          {validCount > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 10px', background: '#0c2a1c', border: '1px solid #166534', borderRadius: 7, cursor: 'pointer' }}>
+              <input type="checkbox" checked={withLogo} onChange={e => setWithLogo(e.target.checked)} />
+              <span style={{ fontSize: 12, color: '#cbd5e1' }}>
+                Poser le <strong>logo du laboratoire</strong> — reconnu sur <strong>{logoReady}</strong> des {selectedCount} étiquettes.
+                {logoReady < selectedCount && <span style={{ color: '#94a3b8' }}> Les autres sortent sans logo, à compléter à la main.</span>}
+              </span>
+            </label>
+          )}
           <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #1e293b', borderRadius: 6, marginBottom: 14 }}>
             {prepared.map(({ d, r, rt }, i) => {
               const on = !excluded.has(i);
@@ -1224,6 +1256,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
                   <input type="checkbox" checked={on} onChange={() => toggleRow(i)} />
                   {type === 'auto' && rtInfo && <span title={rtInfo.label} style={{ fontSize: 10, fontWeight: 800, color: '#fff', background: rtInfo.color, borderRadius: 4, padding: '2px 5px', whiteSpace: 'nowrap' }}>{rtInfo.icon}</span>}
                   <span style={{ flex: 1, fontSize: 12, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.product}</span>
+                  {withLogo && labOf[i].status === 'found' && <span title={`Logo : ${labOf[i].name}`} style={{ fontSize: 10, color: '#4ade80', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏷 {labOf[i].name}</span>}
                   <span style={{ fontSize: 12, color: '#86efac', fontWeight: 700 }}>{price} €</span>
                   {fmt && <span style={{ fontSize: 10, color: '#64748b' }}>{fmt.name}</span>}
                 </label>
@@ -1437,7 +1470,7 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
   const moveLabel = (dir: -1 | 1) => { if (!current) return; setProject(p => { const i = p.labels.findIndex(l => l.id === current.id); const j = i + dir; if (i < 0 || j < 0 || j >= p.labels.length) return p; const ls = p.labels.slice(); [ls[i], ls[j]] = [ls[j], ls[i]]; return { ...p, labels: ls }; }); };
   const labelIndex = current ? project.labels.findIndex(l => l.id === current.id) : -1;
   const addBadge = (t: string, bg: string) => { if (!current) return; const e: El = { id: 'b' + uid(), kind: 'pill', text: t, x: 8, y: 8, size: 0.045, font: SYS, color: '#fff', bg, weight: 900, align: 'center', rot: -8, radius: 6, removable: true }; updateLabel(current.id, l => ({ ...l, extra: [...l.extra, e] })); setSelEl(e.id); };
-  const addBrandLogoSrc = (src: string) => { if (!current) return; const e: El = { id: 'logo' + uid(), kind: 'image', src, x: 66, y: 6, w: 22, size: 0, font: SYS, color: '#000', weight: 400, align: 'left', rot: 0, removable: true }; updateLabel(current.id, l => ({ ...l, extra: [...l.extra, e] })); setSelEl(e.id); };
+  const addBrandLogoSrc = (src: string) => { if (!current) return; const e = brandLogoEl(src); updateLabel(current.id, l => ({ ...l, extra: [...l.extra, e] })); setSelEl(e.id); };
   const uploadBrandLogo = (file: File) => { const r = new FileReader(); r.onload = () => addBrandLogoSrc(r.result as string); r.readAsDataURL(file); };
   const uploadPharmaLogo = (file: File) => { const r = new FileReader(); r.onload = () => setProject(p => ({ ...p, logo: r.result as string })); r.readAsDataURL(file); };
 

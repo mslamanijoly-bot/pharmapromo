@@ -32,3 +32,19 @@ yarn-error.log*
 .vercel
 
 .vercel
+
+# ── Données commerciales de l'officine ────────────────────────────────
+# Le dépôt est PUBLIC : ces classeurs contiennent des prix d'achat, des remises et
+# l'assortiment réel. Une fois poussés, ils resteraient dans l'historique même supprimés.
+promo-officine-import.xlsx
+
+# ── Sorties de scripts, toutes régénérables ───────────────────────────
+*-logos.xlsx
+laboratoires_non_trouves.csv
+marques-a-completer.txt
+logos-rapport.json
+logos-run*.log
+public/logos-planche.html
+
+# Sauvegardes locales avant modification
+*.sauvegarde-*
