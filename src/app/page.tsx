@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, CSSProperties } from 'react';
 import { MM, pf, ff, fr, fitSize, priceParts, parseTable, paginate, chunk, stackColumnBlocks, splitSize, cycleInfo, cycleOf, shiftCycle } from '@/lib/calc';
-import { type ImpType, getFields, autoMap, detectHeader, normalizeRows, prepareRows, PRICE_COLS, FORMAT_KW, TYPE_KW } from '@/lib/import';
+import { type ImpType, getFields, autoMap, detectHeader, normalizeRows, prepareRows, PRICE_COLS, FORMAT_KW, TYPE_KW, LOGO_KW } from '@/lib/import';
 import { findLab, logoUrl } from '@/lib/logos';
 import { TEMPLATES, AUTO_TEMPLATE, TEMPLATE_NUMERIC_HEADERS } from '@/lib/templates';
 
@@ -1141,11 +1141,20 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
   const domFmt = FORMATS.find(f => f.id === (Object.entries(fmtCounts).sort((a, b) => b[1] - a[1])[0]?.[0])) || null;
   const selected = prepared.filter((_, i) => !excluded.has(i));
   const selectedCount = selected.length;
-  // Laboratoire reconnu dans le libellé produit. Calculé une fois par ligne : sert à la fois
-  // au compteur, à la pastille de la liste et à la pose du logo — jamais recalculé ailleurs,
-  // pour que ce qu'on annonce à l'écran soit exactement ce qu'on pose sur l'étiquette.
-  const labOf = prepared.map(({ d }) => findLab(d.product || ''));
-  const logoReady = labOf.filter((m, i) => m.status === 'found' && !excluded.has(i)).length;
+  // Logo de chaque ligne. Deux origines, dans cet ordre :
+  //   1. la colonne « logo_path » du fichier, écrite par `npm run logos:annoter` — elle FAIT
+  //      FOI, c'est le moyen de corriger à la main une reconnaissance jugée mauvaise ;
+  //   2. à défaut, la marque retrouvée dans le libellé produit.
+  // Calculé une fois par ligne : le compteur, la pastille et le logo posé viennent tous d'ici,
+  // pour que ce qu'on annonce à l'écran soit exactement ce qui part sur l'étiquette.
+  const logoCol = hasHeader ? (rows[0] || []).findIndex(h => LOGO_KW.test(h)) : -1;
+  const labOf = prepared.map(({ d, r }) => {
+    const fichier = logoCol >= 0 ? (r[logoCol] || '').trim() : '';
+    if (fichier) return { source: 'fichier' as const, image: fichier, name: fichier.split('/').pop() || fichier, ok: true };
+    const m = findLab(d.product || '');
+    return { source: 'auto' as const, image: m.image, name: m.name, ok: m.status === 'found' };
+  });
+  const logoReady = labOf.filter((m, i) => m.ok && !excluded.has(i)).length;
   const toggleRow = (i: number) => setExcluded(s => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   const toggleAll = () => setExcluded(s => (s.size === 0 ? new Set(prepared.map((_, i) => i)) : new Set()));
   const build = () => {
@@ -1161,7 +1170,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
       const m = labOf[i];
       // Uniquement sur un laboratoire FORMELLEMENT identifié : sur un doute (`ambiguous`),
       // on préfère l'étiquette nue, que l'on complète à la main, à un logo faux imprimé en série.
-      if (withLogo && m.status === 'found' && m.image) label.extra = [brandLogoEl(logoUrl(m.image))];
+      if (withLogo && m.ok && m.image) label.extra = [brandLogoEl(logoUrl(m.image))];
       return [label];
     });
     onImport(labels);
@@ -1256,7 +1265,7 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
                   <input type="checkbox" checked={on} onChange={() => toggleRow(i)} />
                   {type === 'auto' && rtInfo && <span title={rtInfo.label} style={{ fontSize: 10, fontWeight: 800, color: '#fff', background: rtInfo.color, borderRadius: 4, padding: '2px 5px', whiteSpace: 'nowrap' }}>{rtInfo.icon}</span>}
                   <span style={{ flex: 1, fontSize: 12, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.product}</span>
-                  {withLogo && labOf[i].status === 'found' && <span title={`Logo : ${labOf[i].name}`} style={{ fontSize: 10, color: '#4ade80', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏷 {labOf[i].name}</span>}
+                  {withLogo && labOf[i].ok && <span title={`Logo : ${labOf[i].name}${labOf[i].source === 'fichier' ? ' (imposé par le fichier)' : ''}`} style={{ fontSize: 10, color: '#4ade80', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏷 {labOf[i].name}</span>}
                   <span style={{ fontSize: 12, color: '#86efac', fontWeight: 700 }}>{price} €</span>
                   {fmt && <span style={{ fontSize: 10, color: '#64748b' }}>{fmt.name}</span>}
                 </label>

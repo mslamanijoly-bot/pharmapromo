@@ -126,6 +126,8 @@ export const PRODUCT_BRANDS: Record<string, string> = {
   'Akiléïne': 'asepta',
   'Ecrinal': 'asepta',
   'Sorifa': 'sorifa',
+  'Hp Derm': 'sorifa',
+  'HpDerm': 'sorifa',
 
   // ── Compléments & micronutrition ────────────────────────────────────
   'Nutrisante': 'nutrisante',

@@ -18,6 +18,10 @@ const F_CAT: ImpField = { key: 'category', label: 'Catégorie', kw: /cat|rayon|u
 const F_PROD: ImpField = { key: 'product', label: 'Produit', kw: /produit|nom|libell|d[eé]sign|article|d[eé]nom/i };
 const F_QTY: ImpField = { key: 'qtyLabel', label: 'Descriptif', kw: /descript|quantit|conditionn|contenance|g[eé]lul|capsul|comprim/i };
 export const FORMAT_KW = /format|taille|gabarit|dimension|mod[eè]le|support/i;
+// Colonne « logo_path » écrite par `npm run logos:annoter`. Quand elle est là, elle FAIT FOI :
+// c'est le seul moyen pour l'utilisateur de corriger à la main une reconnaissance qu'il juge
+// mauvaise, ou d'imposer un logo sur un produit dont le libellé ne nomme aucune marque.
+export const LOGO_KW = /logo_path|logo|visuel/i;
 // Colonne « Type » : un seul Excel « tout-en-un » décrit toutes les promos, le type est
 // lu ligne par ligne (valeurs libres : « Prix promo », « Bon », « Lot », « Multi »,
 // « 2ᵉ produit »…). Repérée dans l'en-tête, elle est exclue du mappage des champs.
@@ -128,7 +132,12 @@ export function autoMap(fields: ImpField[], header: string[], hasHeader: boolean
   const used = new Set<number>(); const map: Record<string, number> = {};
   fields.forEach(f => { map[f.key] = -1; });
   // Colonnes réservées (Format, Type) : jamais mappées à un champ.
-  const reserved = new Set<number>(); if (hasHeader) header.forEach((h, i) => { if (FORMAT_KW.test(h) || TYPE_KW.test(h)) reserved.add(i); });
+  // Colonnes réservées : Format, Type, et les colonnes de logo — sans quoi « matched_name »,
+  // qui est du texte long, serait pris pour la colonne Produit.
+  const reserved = new Set<number>();
+  if (hasHeader) header.forEach((h, i) => {
+    if (FORMAT_KW.test(h) || TYPE_KW.test(h) || LOGO_KW.test(h) || /^(logo_status|matched_name|match_method)$/i.test(h)) reserved.add(i);
+  });
   // 1) correspondance par mot-clé sur les en-têtes (1ʳᵉ piste)
   if (hasHeader) fields.forEach(f => {
     const col = header.findIndex((h, i) => !used.has(i) && !reserved.has(i) && f.kw.test(h));
@@ -210,5 +219,6 @@ export function importRows(rows: string[][], type: ImpType = 'auto') {
   const mapping = autoMap(getFields(type), header, hasHeader, body, type === 'auto');
   const typeCol = hasHeader ? header.findIndex(h => TYPE_KW.test(h)) : -1;
   const formatCol = hasHeader ? header.findIndex(h => FORMAT_KW.test(h)) : -1;
-  return { hasHeader, header, mapping, typeCol, formatCol, prepared: prepareRows(body, { type, mapping, typeCol }) };
+  const logoCol = hasHeader ? header.findIndex(h => LOGO_KW.test(h)) : -1;
+  return { hasHeader, header, mapping, typeCol, formatCol, logoCol, prepared: prepareRows(body, { type, mapping, typeCol }) };
 }
