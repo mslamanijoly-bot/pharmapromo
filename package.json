@@ -17,7 +17,8 @@
     "logos:recuperer:navigateur": "node --experimental-strip-types scripts/fetch-logos-browser.ts",
     "logos:rejeter": "node --experimental-strip-types scripts/reject-logo.ts",
     "logos:manifeste": "node --experimental-strip-types scripts/gen-logo-manifest.ts",
-    "logos:officine": "node --experimental-strip-types scripts/fetch-logos-officine.ts"
+    "logos:officine": "node --experimental-strip-types scripts/fetch-logos-officine.ts",
+    "logos:rasteriser": "node --experimental-strip-types scripts/rasterize-logos.ts"
   },
   "dependencies": {
     "@upstash/redis": "^1.38.0",

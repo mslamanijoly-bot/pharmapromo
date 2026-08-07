@@ -24,13 +24,14 @@ const known = new Set(LOGOS.map(e => e.key));
 const inconnues = keys.filter(k => !known.has(k));
 if (inconnues.length) { console.error(`Clés inconnues du catalogue : ${inconnues.join(', ')}`); process.exit(1); }
 
-// 1) supprimer les fichiers récupérés (toutes extensions sauf la vignette .svg régénérable)
+// 1) supprimer les fichiers récupérés. Le « .svg » nu en fait partie : c'est un logo récupéré,
+// et le manifeste le préfère à tout le reste — l'oublier laisserait servir le fichier fautif.
+// La vignette, elle, s'appelle « .vignette.svg » et doit survivre : c'est le repli.
 for (const k of keys) {
-  for (const ext of ['png', 'jpg', 'jpeg', 'webp', 'gif']) {
+  for (const ext of ['svg', 'png', 'jpg', 'jpeg', 'webp', 'gif']) {
     const f = join(OUT, `${k}.${ext}`);
     if (existsSync(f)) { unlinkSync(f); console.log(`  supprimé ${k}.${ext}`); }
   }
-  // Un .svg récupéré est indiscernable d'une vignette : gen:logos le réécrira juste après.
 }
 
 // 2) inscrire dans REJETS

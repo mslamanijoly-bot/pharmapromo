@@ -13,6 +13,20 @@
 // (photo d'ambiance, bandeau marketing, logo de certification). Elles gardent leur vignette
 // typographique et ne sont plus retentées. Rempli par `npm run logos:rejeter -- <clé>`.
 export const REJETS: string[] = [
+  'alcon',
+  'bausch_lomb',
+  'cattier',
+  'compeed',
+  'filorga',
+  'galderma',
+  'grunenthal',
+  'laboratoire_lescuyer',
+  'l_oreal',
+  'l_oreal_dermatological_beauty',
+  'thuasne',
+  'unilever',
+  'urgo_healthcare',
+  'zambon',
   'caudalie',
   'eafit',
   'la_roche_posay',
