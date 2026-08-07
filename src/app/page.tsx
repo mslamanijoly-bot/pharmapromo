@@ -1221,7 +1221,9 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
     onImport(labels);
   };
 
-  const example = "Type;Catégorie;Produit;Prix normal;Prix promo;Valeur bon;Descriptif;Format\nPrix promo;COMPLÉMENT ALIMENTAIRE;Chondro-Aid Fort;31,90;26,90;;Lot de 3 x 60 gélules;A4\nBon;HYGIÈNE;Dentifrice SENSODYNE;;;2,00;;Vitrine";
+  // Exemple à recopier : des marques du rayon, pas de grande surface — c'est le premier
+  // repère de l'utilisateur sur ce qu'on attend dans chaque colonne.
+  const example = "Type;Catégorie;Produit;Prix normal;Prix promo;Valeur bon;Descriptif;Format\nPrix promo;SOIN VISAGE;Eau Thermale AVÈNE Hydrance légère;19,90;14,90;;Tube 40 ml;A4\nBon;HYGIÈNE BUCCO-DENTAIRE;Bain de bouche MERIDOL;;;2,00;;Vitrine";
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SYS, padding: 16 }}>

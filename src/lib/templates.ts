@@ -14,40 +14,43 @@ import type { PromoType } from '../app/page';
 export type Template = { headers: string[]; rows: string[][] };
 
 // Modèles « parfaits » par type : en-têtes reconnus automatiquement + exemples.
+// Les marques sont celles de l'officine : un modèle qu'on télécharge sert d'exemple à recopier,
+// il ne doit donc montrer que des produits qu'on a réellement en rayon.
 export const TEMPLATES: Record<PromoType, Template> = {
   'prix-promo': {
     headers: ['Catégorie', 'Produit', 'Prix normal €', 'Prix promo €', 'Descriptif', 'Format'],
     rows: [
-      ['COMPLÉMENT ALIMENTAIRE', 'Chondro-Aid Fort ARKOPHARMA', '31,90', '26,90', 'Lot de 3 x 60 gélules', 'A4'],
-      ['SOIN VISAGE', 'Crème hydratante AVÈNE', '19,90', '14,90', 'Tube 40 ml', 'Vitrine'],
-      ['HYGIÈNE BUCCO-DENTAIRE', 'Bain de bouche ELUDRIL', '8,50', '5,90', 'Flacon 500 ml', 'Rayon'],
+      ['SOIN VISAGE', 'Eau Thermale AVÈNE Hydrance légère', '19,90', '14,90', 'Tube 40 ml', 'A4'],
+      ['CAPILLAIRE', 'Shampooing KLORANE à l’ortie blanche', '9,90', '6,90', 'Flacon 400 ml', 'Vitrine'],
+      ['HYGIÈNE BUCCO-DENTAIRE', 'Dentifrice ELMEX Anti-caries', '5,50', '3,90', 'Tube 75 ml', 'Rayon'],
     ],
   },
   'bon-reduction': {
     headers: ['Catégorie', 'Produit', 'Valeur bon €', 'Validité', 'Format'],
     rows: [
-      ['HYGIÈNE', 'Dentifrice SENSODYNE', '2,00', '31/12/2026', 'Vitrine'],
-      ['BÉBÉ', 'Lingettes MUSTELA', '1,50', '30/09/2026', 'Rayon'],
+      ['HYGIÈNE BUCCO-DENTAIRE', 'Bain de bouche MERIDOL protection gencives', '2,00', '31/12/2026', 'Vitrine'],
+      ['BÉBÉ', 'BIOLANE Lingettes à l’eau', '1,50', '30/09/2026', 'Rayon'],
     ],
   },
   'remise-lot': {
     headers: ['Catégorie', 'Produit', 'Qté totale', 'Offert(s)', "Prix à l'unité €", 'Prix du lot €', 'Descriptif', 'Format'],
     rows: [
-      ['COMPLÉMENT ALIMENTAIRE', 'Magnésium B6', '2', '0', '12,90', '19,98', 'Lot de 2 boîtes', 'A4'],
-      ['SOLAIRE', 'Spray solaire SPF50+', '2', '0', '15,90', '24,90', 'Lot de 2 sprays', 'Réglette'],
+      ['HYGIÈNE INTIME', 'Gel lavant SAFORELLE soin doux', '2', '0', '8,90', '13,90', 'Lot de 2 flacons', 'A4'],
+      ['SOLAIRE', 'DAYLONG Spray solaire SPF30', '2', '0', '15,90', '24,90', 'Lot de 2 sprays', 'Réglette'],
     ],
   },
   'multi-achat': {
+    // Les prix sont des TOTAUX par palier : « 3 = 14,90 € », et non le prix d'une unité.
     headers: ['Catégorie', 'Produit', 'Qté 1', 'Prix 1', 'Qté 2', 'Prix 2', 'Qté 3', 'Prix 3', 'Format'],
     rows: [
-      ['SOLAIRE', 'Spray solaire SPF50', '1', '12,90', '2', '22,90', '3', '29,90', 'Petite'],
+      ['PROTECTION AUDITIVE', 'QUIES Boules Quies cire naturelle', '1', '5,90', '2', '10,90', '3', '14,90', 'Petite'],
     ],
   },
   'remise-2eme': {
     headers: ['Catégorie', 'Produit', "Prix à l'unité €", 'Remise 2ᵉ (%)', 'Descriptif', 'Format'],
     rows: [
-      ['HYGIÈNE BUCCO-DENTAIRE', 'Bain de bouche LISTERINE', '6,50', '60', 'Flacon 500 ml', 'A4'],
-      ['DERMO-COSMÉTIQUE', 'Crème mains NEUTROGENA', '4,95', '50', 'Tube 75 ml', 'Vitrine'],
+      ['HYGIÈNE BUCCO-DENTAIRE', 'Bain de bouche CB12 haleine fraîche', '12,50', '50', 'Flacon 250 ml', 'A4'],
+      ['DERMO-COSMÉTIQUE', 'ROC Retinol Correxion crème nuit', '32,00', '50', 'Pot 30 ml', 'Vitrine'],
     ],
   },
 };
