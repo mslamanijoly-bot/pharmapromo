@@ -1,0 +1,20 @@
+import { chromium } from 'playwright';
+const SHOT = 'C:/Users/mjoly/AppData/Local/Temp/claude/c--Users-mjoly-OneDrive---Pharmacie-de-l-Homme-de-Fer-Bureau-pharmapromo--git/778d476a-72f3-4262-a323-41d59fb965cd/scratchpad/';
+const XLSX = "c:/Users/mjoly/OneDrive - Pharmacie de l'Homme de Fer/Bureau/pharmapromo/test-import-complet.xlsx";
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1400, height: 1100 }, deviceScaleFactor: 2 });
+await p.goto('http://localhost:3000', { waitUntil: 'networkidle', timeout: 45000 });
+await p.waitForTimeout(1200);
+await p.locator('button:has-text("Nouvelle")').first().click(); await p.waitForTimeout(1800);
+await p.locator('button:has-text("Importer")').first().click(); await p.waitForTimeout(900);
+await p.locator('label:has-text("Choisir un fichier") input[type=file]').first().setInputFiles(XLSX);
+await p.waitForTimeout(2500);
+await p.locator('button:has-text("Générer")').first().click(); await p.waitForTimeout(3500);
+await p.evaluate(() => {
+  const img = Array.from(document.querySelectorAll('img')).find(i => (i.getAttribute('src')||'').includes('logos_jpeg'));
+  if (img) img.scrollIntoView({ block: 'center' });
+});
+await p.waitForTimeout(900);
+await p.screenshot({ path: SHOT + 'e7.png' });
+console.log('ok');
+await b.close();
