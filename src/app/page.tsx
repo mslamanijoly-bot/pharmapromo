@@ -476,15 +476,37 @@ function underPrice(m: Mech, y: number, h: number, asp: number): El[] {
     ...T('oldLabel', 'Au lieu de', y, h, asp, { x: 2, w: 47, align: 'right', color: HDF.ink, weight: 800, fill: 0.5 }),
     ...T('old', m.old, y, h, asp, { x: 51, w: 47, align: 'left', color: HDF.old, weight: 800, strike: true, strikeW: 0.07, fill: 0.78, nowrap: true }),
   ];
-  return T('priceNote', m.note, y, h, asp, { x: 6, color: HDF.muted, weight: 700, italic: true, fill: 0.55 });
+  // « l'unité », « le lot de 2 » : une LÉGENDE du prix, pas une ligne à part entière. À 0,55
+  // de la case, le mot prenait la taille d'un titre et flottait loin du prix — on lisait un
+  // « l'unité » égaré au milieu de l'étiquette. Il doit se lire accroché au chiffre.
+  return T('priceNote', m.note, y, h, asp, { x: 6, color: HDF.muted, weight: 700, italic: true, fill: 0.34 });
 }
 
+// ── TAILLE NORMÉE DU LOGO LABORATOIRE ─────────────────────────────────
+// Déclarée ICI et nulle part ailleurs : c'est le seul endroit à toucher pour l'agrandir ou
+// le réduire, par famille de format. En pourcentage de l'étiquette, donc proportionnellement
+// identique d'une affiche A4 à une étiquette de rayon.
+//
+// La HAUTEUR est ce qui norme réellement : la largeur est volontairement généreuse pour que
+// ce soit toujours elle qui contraigne. Un logo carré (Sanofi) et un logo long et plat
+// (Roger & Gallet) sortent alors à la même hauteur d'encre, ce qui est le seul repère
+// visuel qui compte en rayon. Bornée par la largeur, un logo plat aurait paru écrasé.
+//
+// À condition que les fichiers soient rognés au plus près : voir `npm run logos:normer`.
+// Sans ce rognage, la case est respectée mais l'encre flotte dedans, et deux logos de même
+// taille déclarée paraissent de tailles différentes.
+export const LOGO_BOX: Record<'L' | 'M' | 'reglette', { w: number; h: number }> = {
+  L: { w: 56, h: 7.5 },        // A4, vitrine
+  M: { w: 62, h: 7 },          // rayon
+  reglette: { w: 46, h: 12 },  // colonne de droite de la réglette
+};
+
 // Bloc « logo du laboratoire » : hauteur RÉSERVÉE dans le flux, largeur centrée.
-// La hauteur est imposée et l'image se contient dedans (`object-fit`), de sorte qu'un logo
-// carré (Sanofi) et un logo long et plat (Roger & Gallet) occupent la même place — sans quoi
-// la réservation ne vaudrait rien et le carré déborderait sur le prix.
-function labLogoBlk(src: string, h: number): Blk {
-  return { h, el: (y, hh) => [{ ...B, id: 'labLogo', kind: 'image', src, x: 34, y, w: 32, h: hh, size: 0, color: '#000', weight: 400, align: 'center' }] };
+// La hauteur est imposée et l'image se contient dedans (`object-fit`), sans quoi la
+// réservation ne vaudrait rien et un logo carré déborderait sur le prix.
+function labLogoBlk(src: string, tier: 'L' | 'M'): Blk {
+  const box = LOGO_BOX[tier];
+  return { h: box.h, el: (y, hh) => [{ ...B, id: 'labLogo', kind: 'image', src, x: (100 - box.w) / 2, y, w: box.w, h: hh, size: 0, color: '#000', weight: 400, align: 'center' }] };
 }
 
 // ── PORTRAIT (affiche A4, vitrine, rayon, mini) ───────────────────────
@@ -513,7 +535,7 @@ function hdfPortrait(l: Label, o: SeedOpts): El[] {
   );
   // Logo du laboratoire : un BLOC du flux, juste sous le produit. Il descend donc de lui-même
   // quand le nom prend deux ou trois lignes, au lieu d'aller recouvrir le prix.
-  if (d.labLogo && tier !== 'S') blocks.push({ h: 1.2 }, labLogoBlk(d.labLogo, tier === 'L' ? 7 : 5.5));
+  if (d.labLogo && tier !== 'S') blocks.push({ h: 1.2 }, labLogoBlk(d.labLogo, tier));
   // Respiration : c'est ici que se pose naturellement un logo de laboratoire ajouté à la main.
   blocks.push({ flex: 1 });
   if (m.price) {
@@ -575,7 +597,10 @@ function hdfReglette(l: Label, o: SeedOpts): El[] {
   // JUSTE AU-DESSUS DU PRIX. Placé sous le produit, il s'en trouvait éloigné par la respiration
   // et flottait au milieu de la colonne. Il reste dans la colonne de droite, jamais sur la flèche.
   right.push({ flex: 1 });
-  if (d.labLogo) right.push({ h: 11, el: (y, h) => [{ ...B, id: 'labLogo', kind: 'image', src: d.labLogo, x: cx, y, w: cw * 0.40, h, size: 0, color: '#000', weight: 400, align: 'left' }] }, { h: 1.5 });
+  if (d.labLogo) right.push(
+    { h: LOGO_BOX.reglette.h, el: (y, h) => [{ ...B, id: 'labLogo', kind: 'image', src: d.labLogo, x: cx, y, w: cw * (LOGO_BOX.reglette.w / 100), h, size: 0, color: '#000', weight: 400, align: 'left' }] },
+    { h: 1.5 },
+  );
   if (m.price) {
     right.push({ h: 26, el: (y, h) => T('priceInt', eur(m.price), y, h, asp, { x: cx, w: cw, color: red, weight: 900, nowrap: true, fill: 0.96, fitW: 0.86 }) });
     if (m.old) right.push({ h: 11, el: (y, h) => [

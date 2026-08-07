@@ -18,7 +18,9 @@
     "logos:rejeter": "node --experimental-strip-types scripts/reject-logo.ts",
     "logos:manifeste": "node --experimental-strip-types scripts/gen-logo-manifest.ts",
     "logos:officine": "node --experimental-strip-types scripts/fetch-logos-officine.ts",
-    "logos:rasteriser": "node --experimental-strip-types scripts/rasterize-logos.ts"
+    "logos:rasteriser": "node --experimental-strip-types scripts/rasterize-logos.ts",
+    "logos:normer": "node --experimental-strip-types scripts/normalize-logos.ts",
+    "logos:wikidata": "node --experimental-strip-types scripts/fetch-logos-wikidata.ts"
   },
   "dependencies": {
     "@upstash/redis": "^1.38.0",

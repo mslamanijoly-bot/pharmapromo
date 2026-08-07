@@ -13,6 +13,11 @@
 // (photo d'ambiance, bandeau marketing, logo de certification). Elles gardent leur vignette
 // typographique et ne sont plus retentées. Rempli par `npm run logos:rejeter -- <clé>`.
 export const REJETS: string[] = [
+  'crinex',
+  'revitalash_cosmetics',
+  'sunstar',
+  'ucb',
+  'vitavea',
   'alcon',
   'bausch_lomb',
   'cattier',
