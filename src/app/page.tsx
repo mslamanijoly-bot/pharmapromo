@@ -571,9 +571,11 @@ function hdfReglette(l: Label, o: SeedOpts): El[] {
     { h: 2.5 },
     ...fitBlk('qty', d.qtyLabel, 8, asp, { x: cx, w: cw, color: HDF.muted, weight: 600, italic: true, fill: 0.42 }),
   ];
-  // Logo du laboratoire, dans la colonne de droite sous le produit — jamais sur la flèche.
-  if (d.labLogo) right.push({ h: 2 }, { h: 13, el: (y, h) => [{ ...B, id: 'labLogo', kind: 'image', src: d.labLogo, x: cx, y, w: cw * 0.42, h, size: 0, color: '#000', weight: 400, align: 'left' }] });
+  // La respiration D'ABORD, le logo ENSUITE : sur une réglette, le logo du laboratoire se pose
+  // JUSTE AU-DESSUS DU PRIX. Placé sous le produit, il s'en trouvait éloigné par la respiration
+  // et flottait au milieu de la colonne. Il reste dans la colonne de droite, jamais sur la flèche.
   right.push({ flex: 1 });
+  if (d.labLogo) right.push({ h: 11, el: (y, h) => [{ ...B, id: 'labLogo', kind: 'image', src: d.labLogo, x: cx, y, w: cw * 0.40, h, size: 0, color: '#000', weight: 400, align: 'left' }] }, { h: 1.5 });
   if (m.price) {
     right.push({ h: 26, el: (y, h) => T('priceInt', eur(m.price), y, h, asp, { x: cx, w: cw, color: red, weight: 900, nowrap: true, fill: 0.96, fitW: 0.86 }) });
     if (m.old) right.push({ h: 11, el: (y, h) => [
