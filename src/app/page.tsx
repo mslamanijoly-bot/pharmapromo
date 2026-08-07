@@ -209,12 +209,15 @@ export function newLabel(type: PromoType = 'prix-promo', data?: Partial<LabelDat
   return { id: uid(), type, accent: HDF.red, bg: HDF.paper, data: { ...newData(), ...data }, overrides: {}, extra: [], ...(size ? { wMm: size.w, hMm: size.h } : {}) };
 }
 
-// Élément « logo de marque », posé en haut à droite dans la respiration prévue à cet effet
-// (cf. seedElements). Source UNIQUE de la géométrie : un logo reconnu à l'import et un logo
-// déposé à la main par le bouton « Logo de marque » doivent être strictement interchangeables,
-// sinon le second se déplace en remplaçant le premier.
+// Élément « logo de marque ». Il se pose dans la RESPIRATION, ce blanc que seedElements ménage
+// entre le descriptif et le prix (cf. le `{ flex: 1 }`) — et non en haut, où il recouvrait le
+// bandeau de catégorie et coupait le mot au milieu.
+//
+// Source UNIQUE de la géométrie : un logo reconnu à l'import et un logo déposé à la main par le
+// bouton « Logo de marque » doivent être strictement interchangeables, sinon le second se
+// déplace en remplaçant le premier. Il reste déplaçable à la souris dans les deux cas.
 export function brandLogoEl(src: string): El {
-  return { id: 'logo' + uid(), kind: 'image', src, x: 66, y: 6, w: 22, size: 0, font: SYS, color: '#000', weight: 400, align: 'left', rot: 0, removable: true };
+  return { id: 'logo' + uid(), kind: 'image', src, x: 5, y: 60, w: 15, size: 0, font: SYS, color: '#000', weight: 400, align: 'left', rot: 0, removable: true };
 }
 
 function defaultProject(): Project {
