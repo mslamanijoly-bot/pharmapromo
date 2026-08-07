@@ -38,11 +38,11 @@ describe('classeur de test pharmapromo-import.xlsx', () => {
     });
   });
 
-  it('couvre les 5 mécaniques, 40 produits et 30 catégories', async () => {
+  it('couvre les 5 mécaniques, 40 produits et 27 catégories', async () => {
     const rows = await readAsApp();
     const body = rows.slice(1);
     expect(body).toHaveLength(40);
-    expect(new Set(body.map(r => r[1])).size).toBe(30);
+    expect(new Set(body.map(r => r[1])).size).toBe(27);
     expect(new Set(body.map(r => r[2])).size).toBe(40); // aucun produit en double
     const types = new Set(body.map(r => matchPromoType(r[0])));
     expect(types).toEqual(new Set(['prix-promo', 'bon-reduction', 'remise-lot', 'multi-achat', 'remise-2eme']));
@@ -92,33 +92,34 @@ describe('import du classeur → étiquettes prêtes', () => {
     const { prepared } = importRows(await readAsApp());
     const find = (p: string) => prepared.find(x => (x.d.product || '').startsWith(p))!;
 
-    const promo = find('Chondro-Aid');
+    const promo = find('Eau Thermale AVÈNE');
     expect(promo.rt).toBe('prix-promo');
-    expect([pf(promo.d.normalPrice!), pf(promo.d.promoPrice!)]).toEqual([31.9, 26.9]);
-    expect(promo.d.category).toBe('COMPLÉMENT ALIMENTAIRE');
-    expect(promo.d.qtyLabel).toBe('Lot de 3 x 60 gélules');
+    expect([pf(promo.d.normalPrice!), pf(promo.d.promoPrice!)]).toEqual([19.9, 14.9]);
+    expect(promo.d.category).toBe('SOIN VISAGE');
+    expect(promo.d.qtyLabel).toBe('Tube 40 ml');
 
-    const bon = find('Dentifrice SENSODYNE');
+    const bon = find('Bain de bouche MERIDOL');
     expect(bon.rt).toBe('bon-reduction');
     expect(pf(bon.d.couponValue!)).toBe(2);
     expect(bon.d.couponExpiry).toBe('31/12/2026'); // texte, pas une date décalée d'un jour
 
     // Lot de 2 à prix fixe : le prix à l'unité doit arriver, sinon pas de prix barré.
-    const lot = find('Magnésium B6');
+    const lot = find('Gel lavant SAFORELLE');
     expect(lot.rt).toBe('remise-lot');
     expect(lot.d.lotQty).toBe('2');
     expect(lot.d.lotFree).toBe('0');
-    expect(pf(lot.d.normalPrice!)).toBe(12.9);
-    expect(pf(lot.d.lotPrice!)).toBe(19.98);
+    expect(pf(lot.d.normalPrice!)).toBe(8.9);
+    expect(pf(lot.d.lotPrice!)).toBe(13.9);
 
-    const multi = find('Spray solaire GARNIER');
+    const multi = find('QUIES Boules');
     expect(multi.rt).toBe('multi-achat');
     expect([multi.d.t1q, multi.d.t2q, multi.d.t3q]).toEqual(['1', '2', '3']);
-    expect([pf(multi.d.t1p!), pf(multi.d.t2p!), pf(multi.d.t3p!)]).toEqual([12.9, 22.9, 29.9]);
+    // Des TOTAUX par palier, pas des prix unitaires — c'est ce que lit mechOf.
+    expect([pf(multi.d.t1p!), pf(multi.d.t2p!), pf(multi.d.t3p!)]).toEqual([5.9, 10.9, 14.9]);
 
-    const deux = find('Crème mains NEUTROGENA');
+    const deux = find('ROC Retinol');
     expect(deux.rt).toBe('remise-2eme');
-    expect(pf(deux.d.normalPrice!)).toBe(4.95);
+    expect(pf(deux.d.normalPrice!)).toBe(32);
     expect(deux.d.remiseManual).toBe('50');
   });
 
@@ -131,10 +132,10 @@ describe('import du classeur → étiquettes prêtes', () => {
 
   it('détache le litrage collé au nom du produit', async () => {
     const { prepared } = importRows(await readAsApp());
-    // « Lait hydratant CERAVE F/473ML » sans descriptif → le format part sur la petite ligne.
-    const cerave = prepared.find(x => (x.d.product || '').includes('CERAVE'))!;
-    expect(cerave.d.product).not.toMatch(/473/);
-    expect(cerave.d.qtyLabel).toMatch(/473/);
+    // « Huile de soin BI-OIL F/200ML » sans descriptif → le format part sur la petite ligne.
+    const bioil = prepared.find(x => (x.d.product || '').includes('BI-OIL'))!;
+    expect(bioil.d.product).not.toMatch(/200/);
+    expect(bioil.d.qtyLabel).toMatch(/200/);
   });
 
   // Les modèles mono-type (un fichier par mécanique) doivent se mapper aussi bien.

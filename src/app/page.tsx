@@ -352,7 +352,7 @@ function fitBlk(id: string, text: string, budget: number, asp: number, o: TOpt):
 //   note = ce que dit le prix quand il n'y a pas d'ancien prix (« l'unité », « le lot de 3 »)
 //   foot = la mécanique détaillée, en pied (paliers, « soit X € les 2 »…)
 interface Mech { big: string; sub: string; price: string; old: string; note: string; foot: string }
-function mechOf(l: Label): Mech {
+export function mechOf(l: Label): Mech {
   const d = l.data;
   if (l.type === 'bon-reduction') {
     const v = pf(d.couponValue);
@@ -373,18 +373,28 @@ function mechOf(l: Label): Mech {
     };
   }
   if (l.type === 'multi-achat') {
-    const p1 = pf(d.t1p), best = pf(d.t3p) || pf(d.t2p) || p1;
-    const qBest = (d.t3q || d.t2q || d.t1q || '').trim();
-    const pct = p1 > 0 && best > 0 && best < p1 ? Math.round((1 - best / p1) * 100) : 0;
+    // Les prix de paliers saisis sont des TOTAUX (« 3 = 9,00 € »), pas des prix unitaires.
+    // Les afficher tels quels sous la mention « l'unité » annonçait un savon à 13,50 € pièce
+    // alors qu'il en vaut 3,50 € : un affichage de prix trompeur, inacceptable en rayon.
+    // On ramène donc chaque palier au prix À L'UNITÉ avant toute comparaison.
+    const tiers = ([[d.t1q, d.t1p], [d.t2q, d.t2p], [d.t3q, d.t3p]] as [string, string][])
+      .map(([q, p]) => ({ q: pf(q), total: pf(p), qTxt: (q || '').trim(), pTxt: p }))
+      .filter(t => t.q > 0 && t.total > 0);
+    const units = tiers.map(t => t.total / t.q);
+    const ref = units[0] ?? 0;                                   // palier 1 = prix de référence
+    const best = units.length ? Math.min(...units) : 0;
+    const bestTier = tiers[units.indexOf(best)];
+    const qBest = bestTier?.qTxt || '';
+    const pct = ref > 0 && best > 0 && best < ref ? Math.round((1 - best / ref) * 100) : 0;
     // Les paliers ne disparaissent pas : ils passent en pied, sur une ligne, sans casser la maquette.
-    const ladder = ([[d.t1q, d.t1p], [d.t2q, d.t2p], [d.t3q, d.t3p]] as [string, string][])
-      .filter(([q, p]) => (q || '').trim() && pf(p) > 0)
-      .map(([q, p]) => `${q} = ${eur(p)}`).join('   ·   ');
+    const ladder = tiers.map(t => `${t.qTxt} = ${eur(t.pTxt)}`).join('   ·   ');
     return {
       big: pct ? `-${pct}%` : (qBest ? `DÈS ${qBest}` : 'MULTI-ACHAT'),
       sub: qBest ? `dès ${qBest} achetés` : 'plus vous achetez, plus vous économisez',
-      price: best > 0 ? ff(best) : d.t1p, old: p1 > best && p1 > 0 ? `${ff(p1)} €` : '',
-      note: "l'unité", foot: ladder,
+      price: best > 0 ? ff(best) : '',
+      old: ref > best && ref > 0 ? `${ff(ref)} €` : '',
+      note: qBest ? `l'unité dès ${qBest} achetés` : "l'unité",
+      foot: ladder,
     };
   }
   if (l.type === 'remise-2eme') {
