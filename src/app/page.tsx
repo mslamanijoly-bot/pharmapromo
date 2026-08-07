@@ -38,6 +38,13 @@ export interface LabelData {
   lotQty: string; lotFree: string; lotPrice: string; unitPrice: string;
   t1q: string; t1p: string; t2q: string; t2p: string; t3q: string; t3p: string;
   dateStart: string; dateEnd: string;
+  /**
+   * Logo du laboratoire, chemin servi depuis public/ (« /logos_jpeg/avene.png »).
+   * DANS LES DONNÉES et non dans `extra` : c'est ce qui lui vaut une place réservée dans le
+   * flux, sous le nom du produit. Posé en surimpression, il recouvrait le bandeau, le prix
+   * ou le prix barré selon la longueur du nom — un nom de produit tient sur 1 à 3 lignes.
+   */
+  labLogo: string;
 }
 
 export interface Label { id: string; type: PromoType; accent: string; bg: string; data: LabelData; overrides: Record<string, Partial<El>>; extra: El[]; wMm?: number; hMm?: number; }
@@ -170,7 +177,7 @@ const newData = (): LabelData => ({
   // 2 × le prix normal. Passer « offert(s) » à 1 rebascule sur « 1 acheté + 1 offert ».
   lotQty: '2', lotFree: '0', lotPrice: '49,90', unitPrice: '9,99',
   t1q: '1', t1p: '9,90', t2q: '2', t2p: '8,50', t3q: '3', t3p: '7,90',
-  dateStart: '', dateEnd: '',
+  dateStart: '', dateEnd: '', labLogo: '',
 });
 
 // « Lot » : deux mécaniques selon le nombre d'articles offerts.
@@ -462,6 +469,14 @@ function underPrice(m: Mech, y: number, h: number, asp: number): El[] {
   return T('priceNote', m.note, y, h, asp, { x: 6, color: HDF.muted, weight: 700, italic: true, fill: 0.55 });
 }
 
+// Bloc « logo du laboratoire » : hauteur RÉSERVÉE dans le flux, largeur centrée.
+// La hauteur est imposée et l'image se contient dedans (`object-fit`), de sorte qu'un logo
+// carré (Sanofi) et un logo long et plat (Roger & Gallet) occupent la même place — sans quoi
+// la réservation ne vaudrait rien et le carré déborderait sur le prix.
+function labLogoBlk(src: string, h: number): Blk {
+  return { h, el: (y, hh) => [{ ...B, id: 'labLogo', kind: 'image', src, x: 34, y, w: 32, h: hh, size: 0, color: '#000', weight: 400, align: 'center' }] };
+}
+
 // ── PORTRAIT (affiche A4, vitrine, rayon, mini) ───────────────────────
 function hdfPortrait(l: Label, o: SeedOpts): El[] {
   const d = l.data, asp = o.aspect || 0.7, red = l.accent || HDF.red, tier = tierOf(o);
@@ -478,12 +493,17 @@ function hdfPortrait(l: Label, o: SeedOpts): El[] {
     { h: tier === 'L' ? 3 : 2 },
     { h: hero, el: (y, h) => heroBlock(l, o, m, y, h, red, tier) },
     { h: tier === 'L' ? 6 : 4 },
-    ...fitBlk('product', d.product, tier === 'S' ? 17 : 14, asp, { x: 5, color: HDF.ink, weight: 900, lines: 2, floor: 0.02 }),
+    // Un nom d'officine tient couramment sur trois lignes (« Crème anti-callosités AKILEÏNE
+    // Podologie »). On l'autorise plutôt que de rapetisser le texte jusqu'à l'illisible.
+    ...fitBlk('product', d.product, tier === 'S' ? 17 : 14, asp, { x: 5, color: HDF.ink, weight: 900, lines: 3, floor: 0.02 }),
   ];
   if (tier !== 'S') blocks.push(
     { h: 1.6 },
     ...fitBlk('qty', d.qtyLabel, 4.5, asp, { x: 6, color: HDF.muted, weight: 600, italic: true, fill: 0.42 }),
   );
+  // Logo du laboratoire : un BLOC du flux, juste sous le produit. Il descend donc de lui-même
+  // quand le nom prend deux ou trois lignes, au lieu d'aller recouvrir le prix.
+  if (d.labLogo && tier !== 'S') blocks.push({ h: 1.2 }, labLogoBlk(d.labLogo, tier === 'L' ? 7 : 5.5));
   // Respiration : c'est ici que se pose naturellement un logo de laboratoire ajouté à la main.
   blocks.push({ flex: 1 });
   if (m.price) {
@@ -537,10 +557,12 @@ function hdfReglette(l: Label, o: SeedOpts): El[] {
   ], BAND + 2, ah));
   const right: Blk[] = [
     { h: BAND + 4 },
-    ...fitBlk('product', d.product, 25, asp, { x: cx, w: cw, color: HDF.ink, weight: 900, lines: 2, floor: 0.04 }),
+    ...fitBlk('product', d.product, 25, asp, { x: cx, w: cw, color: HDF.ink, weight: 900, lines: 3, floor: 0.04 }),
     { h: 2.5 },
     ...fitBlk('qty', d.qtyLabel, 8, asp, { x: cx, w: cw, color: HDF.muted, weight: 600, italic: true, fill: 0.42 }),
   ];
+  // Logo du laboratoire, dans la colonne de droite sous le produit — jamais sur la flèche.
+  if (d.labLogo) right.push({ h: 2 }, { h: 13, el: (y, h) => [{ ...B, id: 'labLogo', kind: 'image', src: d.labLogo, x: cx, y, w: cw * 0.42, h, size: 0, color: '#000', weight: 400, align: 'left' }] });
   right.push({ flex: 1 });
   if (m.price) {
     right.push({ h: 26, el: (y, h) => T('priceInt', eur(m.price), y, h, asp, { x: cx, w: cw, color: red, weight: 900, nowrap: true, fill: 0.96, fitW: 0.86 }) });
@@ -604,6 +626,10 @@ function renderEl(e: El, H: number): CSSProperties {
       else if (e.shape === 'arrow-r') { st.clipPath = ARROW_RIGHT; st.borderRadius = undefined; }
     }
     if (e.border) st.border = e.border;
+  }
+  // Image dont la hauteur est imposée par le flux : on la fixe ici, l'<img> s'y contiendra.
+  if (e.kind === 'image' && e.h != null) {
+    st.height = `${e.h}%`;
     // Rendu MAT (DA « Homme de Fer ») : pas de liseré blanc ni de reflet sur le cercle.
     // Seulement une ombre portée très douce pour le détacher à l'écran (ignorée à l'impression).
     if (e.shadow) st.boxShadow = e.shape === 'circle'
@@ -722,7 +748,11 @@ export function LabelView({ label, W, H, editing, opts, selectedLabel, selectedE
                   initial={e.text || ''}
                   onCommit={(t) => { onCommitText?.(e.id, t); onEndEdit?.(); }}
                   onCancel={() => onEndEdit?.()} />
-              : (e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} />
+              // Une image à hauteur IMPOSÉE se contient dans sa case (`contain`) : c'est ce qui
+              // permet de lui réserver une place dans le flux sans savoir si le logo est large et
+              // plat ou carré. Sans hauteur, comportement d'origine (hauteur libre) — logo de
+              // l'officine et images posées à la main.
+              : (e.kind === 'image' ? <img src={e.src} alt="" style={{ width: '100%', height: e.h != null ? '100%' : 'auto', objectFit: e.h != null ? 'contain' : undefined, objectPosition: 'center', display: 'block', pointerEvents: 'none' }} />
                 : (e.kind === 'box' ? null
                   : (e.strike && e.text
                     ? <Strike text={e.text} color={e.color} thickness={Math.max(1, e.size * H * (e.strikeW ?? 0.05))} />
@@ -1173,7 +1203,9 @@ function ImportModal({ onClose, onImport }: { onClose: () => void; onImport: (la
       const m = labOf[i];
       // Uniquement sur un laboratoire FORMELLEMENT identifié : sur un doute (`ambiguous`),
       // on préfère l'étiquette nue, que l'on complète à la main, à un logo faux imprimé en série.
-      if (withLogo && m.ok && m.image) label.extra = [brandLogoEl(logoUrl(m.image))];
+      // Le logo va dans les DONNÉES : la composition lui réserve alors une place sous le nom
+      // du produit, au lieu de le poser par-dessus au petit bonheur.
+      if (withLogo && m.ok && m.image) label.data.labLogo = logoUrl(m.image);
       return [label];
     });
     onImport(labels);
