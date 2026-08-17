@@ -1072,7 +1072,14 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
         {el.shape !== 'circle' && <Slider label="Coins arrondis" value={el.radius || 0} min={0} max={50} step={1} suffix="px" onChange={v => patch({ radius: v })} />}
       </>);
     })()}
-    {el.kind === 'image' && <Slider label="Largeur" value={Math.round(el.w || 28)} min={4} max={90} step={1} suffix="%" onChange={v => patch({ w: v })} />}
+    {/* Le logo du laboratoire a une hauteur IMPOSÉE par sa case (voir LOGO_BOX) : n'agir que
+        sur la largeur ne changeait donc rien à sa taille apparente, l'image restant contenue
+        dans la même hauteur. On redimensionne les deux ensemble, en gardant les proportions
+        de la case — c'est ce que l'on attend d'un curseur « Taille ». */}
+    {el.kind === 'image' && el.h != null
+      ? <Slider label="Taille du logo" value={Math.round((el.h || 7) * 10)} min={20} max={220} step={2} suffix="%"
+          onChange={v => { const k = v / 10 / (el.h || 7); patch({ h: (el.h || 7) * k, w: Math.min(96, (el.w || 40) * k), x: Math.max(0, (el.x ?? 0) - ((el.w || 40) * k - (el.w || 40)) / 2) }); }} />
+      : el.kind === 'image' && <Slider label="Largeur" value={Math.round(el.w || 28)} min={4} max={90} step={1} suffix="%" onChange={v => patch({ w: v })} />}
     <Slider label="Rotation" value={el.rot} min={-30} max={30} step={1} suffix="°" onChange={v => patch({ rot: v })} />
     <div style={{ fontSize: 10, color: '#64748b', marginTop: 6, fontFamily: SYS }}>Position : glissez l&apos;élément sur l&apos;étiquette ✋</div>
   </>);
@@ -1626,6 +1633,15 @@ function Studio({ project, setProject, onBack, saving, mode, undo, redo, canUndo
               <button onClick={addLabel} style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Étiquette</button>
               <button onClick={() => addTextBlock()} title="Ajouter un bloc de texte (ou double-cliquez sur l'étiquette)" style={{ padding: '7px 12px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>＋ Texte</button>
               <button onClick={() => setShowPreview(true)} style={{ padding: '7px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 800, boxShadow: '0 2px 10px #16a34a66' }}>🖨 Imprimer / PDF</button>
+              {/* Zoom du plan de travail. Le facteur d'échelle existait déjà mais aucune
+                  commande ne le pilotait : on travaillait toujours à 60 %, donc à l'aveugle
+                  sur les petits caractères. « Ajuster » recale sur la hauteur disponible. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 6, background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '2px 4px' }}>
+                <button onClick={() => setScale(s => Math.max(0.15, Math.round((s - 0.1) * 100) / 100))} title="Dézoomer" style={{ padding: '4px 9px', background: 'transparent', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 15, fontWeight: 800, lineHeight: 1 }}>−</button>
+                <button onClick={() => setScale(0.6)} title="Revenir à 60 %" style={{ minWidth: 46, padding: '4px 2px', background: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{Math.round(scale * 100)} %</button>
+                <button onClick={() => setScale(s => Math.min(4, Math.round((s + 0.1) * 100) / 100))} title="Zoomer" style={{ padding: '4px 9px', background: 'transparent', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 15, fontWeight: 800, lineHeight: 1 }}>+</button>
+                <button onClick={() => setScale(Math.max(0.15, Math.min(2, (window.innerHeight - 210) / L.PH)))} title="Ajuster à la fenêtre" style={{ padding: '4px 8px', background: '#1e293b', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Ajuster</button>
+              </div>
             </div>
           </div>
           {overflow && <div style={{ background: '#7c2d12', color: '#fed7aa', fontSize: 12, padding: '6px 16px' }}>⚠ {project.labels.length} étiquettes pour {L.capacity} emplacement(s) — réduisez la taille ou changez de format.</div>}
