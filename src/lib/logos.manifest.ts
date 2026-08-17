@@ -2,7 +2,7 @@
 //  QUEL FICHIER SERT DE LOGO  ·  GÉNÉRÉ, NE PAS ÉDITER À LA MAIN
 //
 //  Produit par `npm run logos:manifeste`, qui inspecte public/logos_jpeg/.
-//  355 logos réels · 24 vignettes typographiques.
+//  360 logos réels · 19 vignettes typographiques.
 //
 //  Un logo réel l'emporte toujours sur la vignette. Déposez « avene.png » dans le dossier,
 //  relancez le manifeste : l'étiquette prend le vrai logo, sans toucher au code.
@@ -42,7 +42,7 @@ export const LOGO_FILES: Record<string, string> = {
   "patyka": "logos_jpeg/patyka.png",
   "neutrogena": "logos_jpeg/neutrogena.png",
   "nivea": "logos_jpeg/nivea.png",
-  "dove": "logos_jpeg/dove.vignette.svg",
+  "dove": "logos_jpeg/dove.png",
   "mixa": "logos_jpeg/mixa.png",
   "arkopharma": "logos_jpeg/arkopharma.png",
   "puressentiel": "logos_jpeg/puressentiel.png",
@@ -90,7 +90,7 @@ export const LOGO_FILES: Record<string, string> = {
   "bristol_myers_squibb": "logos_jpeg/bristol_myers_squibb.svg",
   "boehringer_ingelheim": "logos_jpeg/boehringer_ingelheim.png",
   "takeda": "logos_jpeg/takeda.svg",
-  "teva": "logos_jpeg/teva.vignette.svg",
+  "teva": "logos_jpeg/teva.png",
   "viatris": "logos_jpeg/viatris.png",
   "mylan": "logos_jpeg/mylan.png",
   "amgen": "logos_jpeg/amgen.png",
@@ -138,7 +138,7 @@ export const LOGO_FILES: Record<string, string> = {
   "nutrisante": "logos_jpeg/nutrisante.vignette.svg",
   "asepta": "logos_jpeg/asepta.png",
   "essity": "logos_jpeg/essity.png",
-  "thuasne": "logos_jpeg/thuasne.vignette.svg",
+  "thuasne": "logos_jpeg/thuasne.png",
   "colgate_palmolive": "logos_jpeg/colgate_palmolive.png",
   "therascience": "logos_jpeg/therascience.png",
   "sunstar": "logos_jpeg/sunstar.vignette.svg",
@@ -172,12 +172,12 @@ export const LOGO_FILES: Record<string, string> = {
   "labcatal": "logos_jpeg/labcatal.png",
   "copmed": "logos_jpeg/copmed.png",
   "anaca3": "logos_jpeg/anaca3.png",
-  "yves_ponroy": "logos_jpeg/yves_ponroy.vignette.svg",
+  "yves_ponroy": "logos_jpeg/yves_ponroy.png",
   "phytoresearch": "logos_jpeg/phytoresearch.png",
   "crinex": "logos_jpeg/crinex.vignette.svg",
   "genevrier": "logos_jpeg/genevrier.png",
   "mercurochrome": "logos_jpeg/mercurochrome.png",
-  "compeed": "logos_jpeg/compeed.vignette.svg",
+  "compeed": "logos_jpeg/compeed.png",
   "hra_pharma": "logos_jpeg/hra_pharma.png",
   "nutrisante_lab": "logos_jpeg/nutrisante_lab.vignette.svg",
   "lysopaine": "logos_jpeg/lysopaine.vignette.svg",
