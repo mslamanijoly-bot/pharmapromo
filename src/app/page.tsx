@@ -27,6 +27,8 @@ interface El {
   weight: number; align: Align; rot: number;
   strike?: boolean; strikeW?: number; radius?: number; shape?: 'circle' | 'arrow' | 'arrow-r'; shadow?: boolean; border?: string;
   track?: number; italic?: boolean; nowrap?: boolean;
+  /** Interligne, en multiple du corps. 1.02 par défaut — serré, comme sur une affiche. */
+  lh?: number;
   hidden?: boolean; removable?: boolean;
 }
 
@@ -311,6 +313,7 @@ interface TOpt {
   x?: number; w?: number; color?: string; weight?: number; align?: Align; track?: number;
   italic?: boolean; lines?: number; fill?: number; fitW?: number; floor?: number; strike?: boolean; strikeW?: number; nowrap?: boolean;
   size?: number;   // taille imposée (quand la case a été dimensionnée sur le texte, cf. measure)
+  lh?: number;     // interligne, en multiple du corps
 }
 // Mesure d'un texte dans sa case : taille retenue, nombre de lignes réellement occupées et
 // hauteur réelle. Sert à dimensionner une case SUR son contenu — c'est ce qui colle le
@@ -318,12 +321,19 @@ interface TOpt {
 // sur une seule ligne (le blanc doit séparer les blocs, pas les couper en deux).
 function measure(t: string, slot: number, asp: number, o: TOpt) {
   const x = o.x ?? 4, w = o.w ?? Math.max(4, 100 - 2 * x);
-  const maxLines = o.lines ?? 1;
+  // Un retour à la ligne TAPÉ par l'utilisateur impose son nombre de lignes : sans le compter,
+  // le texte gardait la hauteur d'une seule ligne et débordait sur le bloc suivant.
+  const forcees = (t.match(/\n/g) || []).length + 1;
+  const maxLines = Math.max(o.lines ?? 1, forcees);
   const cap = ((slot / 100) * (o.fill ?? 0.88)) / maxLines;   // hauteur d'une ligne, en fraction de H
   const wFrac = (w / 100) * (o.fitW ?? 0.94);
-  const size = o.size ?? fitSize(t, wFrac, asp, cap, maxLines, Math.min(o.floor ?? 0.011, cap));
-  const lines = Math.max(1, Math.min(maxLines, Math.ceil((0.55 * Math.max(1, t.length) * size) / (wFrac * asp))));
-  return { x, w, size, lines, h: size * 100 * lines * 1.02 };
+  // La plus longue ligne décide du corps : mesurer sur le texte entier rapetissait tout
+  // dès qu'on ajoutait une ligne courte.
+  const plusLongue = t.split('\n').reduce((a, l) => Math.max(a, l.trim().length), 1);
+  const size = o.size ?? fitSize('x'.repeat(plusLongue), wFrac, asp, cap, maxLines, Math.min(o.floor ?? 0.011, cap));
+  const auto = Math.ceil((0.55 * plusLongue * size) / (wFrac * asp));
+  const lines = Math.max(forcees, Math.min(maxLines, Math.max(1, auto)));
+  return { x, w, size, lines, h: size * 100 * lines * (o.lh ?? 1.02) };
 }
 function T(id: string, text: string, y: number, slot: number, asp: number, o: TOpt = {}): El[] {
   const t = (text || '').trim();
@@ -646,9 +656,13 @@ function renderEl(e: El, H: number): CSSProperties {
   const st: CSSProperties = {
     position: 'absolute', left: `${e.x}%`, top: `${e.y}%`,
     transform: e.rot ? `rotate(${e.rot}deg)` : undefined, transformOrigin: 'top left',
-    fontFamily: e.font, fontWeight: e.weight, color: e.color, textAlign: e.align, lineHeight: 1.02,
+    fontFamily: e.font, fontWeight: e.weight, color: e.color, textAlign: e.align,
+    lineHeight: e.lh ?? 1.02,
     width: e.w != null ? `${e.w}%` : undefined,
-    whiteSpace: e.nowrap ? 'nowrap' : (e.w != null ? 'normal' : 'nowrap'),
+    // « pre-line » et non « normal » : les retours à la ligne tapés (Maj+Entrée) sont
+    // CONSERVÉS, tout en laissant le texte se replier tout seul s'il est trop long.
+    // Avec « normal », le saut était avalé et l'utilisateur ne comprenait pas pourquoi.
+    whiteSpace: e.nowrap ? 'nowrap' : (e.w != null ? 'pre-line' : 'nowrap'),
     // Le prix barré n'utilise PAS `line-through` (trait horizontal) : voir <Strike/>.
     letterSpacing: e.track != null ? `${e.track}em` : (e.weight >= 800 ? '0.01em' : undefined),
     fontStyle: e.italic ? 'italic' : undefined,
@@ -928,7 +942,14 @@ function PrintSheet({ project, screen }: { project: Project; screen?: boolean })
 const inp: CSSProperties = { width: '100%', padding: '7px 9px', background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 5, fontSize: 13, boxSizing: 'border-box', fontFamily: SYS };
 const lbl: CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: SYS };
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div style={{ marginBottom: 10 }}><label style={lbl}>{label}</label>{children}</div>; }
-function TextInp({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) { return <Field label={label}><input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={inp} /></Field>; }
+// `multi` → zone de texte : un <input> d'une seule ligne AVALE les retours à la ligne. Le nom
+// du produit en contient depuis qu'on peut le couper à la main (Maj+Entrée sur l'étiquette) :
+// dans un <input>, « Crème mains ⏎ réparatrice » s'affichait « Crème mainsréparatrice », et la
+// moindre correction dans le champ détruisait la coupe.
+function TextInp({ label, value, onChange, placeholder, multi }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; multi?: boolean }) {
+  if (multi) return <Field label={label}><textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={Math.min(4, (value.match(/\n/g) || []).length + 1)} style={{ ...inp, resize: 'vertical', lineHeight: 1.35 }} /></Field>;
+  return <Field label={label}><input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={inp} /></Field>;
+}
 // Champ prix : n'accepte que chiffres + virgule, normalise le point en virgule
 function PriceInp({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return <Field label={label}><input inputMode="decimal" value={value} placeholder="0,00" onChange={e => onChange(e.target.value.replace(/[^\d.,]/g, '').replace('.', ','))} style={inp} /></Field>;
@@ -986,7 +1007,7 @@ function ContentForm({ l, set }: { l: Label; set: (k: keyof LabelData, v: string
   const d = l.data;
   const G = (a: React.ReactNode, b: React.ReactNode) => <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{a}{b}</div>;
   const cat = <TextInp label="Catégorie (bandeau)" value={d.category} onChange={v => set('category', v)} placeholder="COMPLÉMENT ALIMENTAIRE" />;
-  const prod = <TextInp label="Produit" value={d.product} onChange={v => set('product', v)} />;
+  const prod = <TextInp label="Produit" value={d.product} onChange={v => set('product', v)} multi />;
   const qty = <TextInp label="Descriptif / quantité" value={d.qtyLabel} onChange={v => set('qtyLabel', v)} placeholder="Lot de 3 x 60 gélules*" />;
   const dates = G(<TextInp label="Date début" value={d.dateStart} onChange={v => set('dateStart', v)} placeholder="01/06/2026" />, <TextInp label="Date fin" value={d.dateEnd} onChange={v => set('dateEnd', v)} placeholder="30/06/2026" />);
   let middle: React.ReactNode = null;
@@ -1024,7 +1045,10 @@ function ContentForm({ l, set }: { l: Label; set: (k: keyof LabelData, v: string
 function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void }) {
   return (<>
     {(el.kind === 'text' || el.kind === 'pill') && (<>
-      <Field label="Texte"><input value={el.text || ''} onChange={e => patch({ text: e.target.value })} style={inp} /></Field>
+      {/* Zone de texte et non <input> : les retours à la ligne du bloc doivent pouvoir
+          s'y lire ET s'y saisir. Dans un champ d'une ligne ils étaient avalés à l'affichage,
+          puis effacés dès la première correction. */}
+      <Field label="Texte"><textarea value={el.text || ''} onChange={e => patch({ text: e.target.value })} rows={Math.min(5, ((el.text || '').match(/\n/g) || []).length + 1)} style={{ ...inp, resize: 'vertical', lineHeight: 1.35 }} /></Field>
       <Field label="Police"><select value={el.font} onChange={e => patch({ font: e.target.value })} style={{ ...inp, cursor: 'pointer' }}>{FONTS.map(f => <option key={f.name} value={f.css}>{f.name}</option>)}</select></Field>
       <Field label={`Taille du texte : ${Math.round(el.size * 1000) / 10}%`}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1080,8 +1104,14 @@ function ElementEditor({ el, patch }: { el: El; patch: (p: Partial<El>) => void 
       ? <Slider label="Taille du logo" value={Math.round((el.h || 7) * 10)} min={20} max={220} step={2} suffix="%"
           onChange={v => { const k = v / 10 / (el.h || 7); patch({ h: (el.h || 7) * k, w: Math.min(96, (el.w || 40) * k), x: Math.max(0, (el.x ?? 0) - ((el.w || 40) * k - (el.w || 40)) / 2) }); }} />
       : el.kind === 'image' && <Slider label="Largeur" value={Math.round(el.w || 28)} min={4} max={90} step={1} suffix="%" onChange={v => patch({ w: v })} />}
+    {/* Interligne : réglable seulement sur du texte, et à partir de 0,8 — en deçà les
+        accents des majuscules mordent la ligne du dessus. */}
+    {(el.kind === 'text' || el.kind === 'pill') &&
+      <Slider label="Interligne" value={Math.round((el.lh ?? 1.02) * 100)} min={80} max={220} step={2} suffix="%" onChange={v => patch({ lh: v / 100 })} />}
     <Slider label="Rotation" value={el.rot} min={-30} max={30} step={1} suffix="°" onChange={v => patch({ rot: v })} />
     <div style={{ fontSize: 10, color: '#64748b', marginTop: 6, fontFamily: SYS }}>Position : glissez l&apos;élément sur l&apos;étiquette ✋</div>
+    {(el.kind === 'text' || el.kind === 'pill') &&
+      <div style={{ fontSize: 10, color: '#64748b', marginTop: 3, fontFamily: SYS }}>Retour à la ligne : double-cliquez le texte, puis <strong style={{ color: '#94a3b8' }}>Maj + Entrée</strong> à l&apos;endroit voulu.</div>}
   </>);
 }
 
